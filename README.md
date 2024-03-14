@@ -1,1 +1,1 @@
-Proyecto: Modelos de Scoring de Crédito
+Proyectos Escolares
