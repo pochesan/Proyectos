@@ -1,0 +1,1303 @@
+---
+title: "Tarea Examen 3"
+author: "Alejandro Bonilla Alarcón & Angel Josué Mejía Nájera"
+date: "02-06-2023"
+output:
+  bookdown::pdf_document2:
+    citation_package: natbib
+    number_sections: yes
+    toc: yes
+    highlight: arrow
+    keep_tex: yes
+  pdf_document:
+    toc: yes
+subtitle: Versión B
+header-includes:
+- \usepackage[spanish]{babel}
+- \decimalpoint
+- \usepackage{enumitem}
+- \usepackage{caption}
+- \usepackage{amsmath}
+- \usepackage{nccmath}
+- \usepackage{amsthm}
+- \usepackage{bm}
+- \usepackage{float}
+- \usepackage{booktabs}
+- \usepackage{diagbox}
+- \usepackage{array}
+- \usepackage{graphicx}
+- \usepackage{wrapfig}
+- \usepackage{xcolor}
+- \usepackage{csquotes}
+- \theoremstyle{Definicion}
+- \newtheorem{Definition}{Definición}
+- \theoremstyle{Result}
+- \newtheorem{Result}{Resultado}
+linkcolor: blue
+---
+```{r setup, include=FALSE}
+
+#Limpieza de entorno
+rm(list = ls(all.names = TRUE))
+gc()
+#Fijamos decimales
+options(digits=4)
+
+knitr::opts_chunk$set(echo = FALSE,
+                      fig.align = "center",
+                      fig.pos = "H", 
+                      fig.dim = c(5,3))
+
+library(kableExtra)
+library(tidyverse)
+library(caret)
+library(MASS)
+library(glmnet)
+```
+
+\newpage
+
+# Ejercicio 1
+
+## Datos
+
+Se consideró la base de datos fat del paquete faraway, se usaron todas las variables, excepto siri, density y free. También se eliminó del análisis los casos con valores extraños en weight y height, así como valores cero en brozek. El objetivo del estudio es usar las variables clínicas observadas en los pacientes para predecir el porcentaje de grasa corporal en los hombres (var brozek).
+
+Para calcular el poder de predicción se utiliza el método 5-CV
+
+```{r procesamiento de datos, include = FALSE}
+
+# Cargamos los datos y quitamos datos extraños
+data(fat, package = "faraway")
+
+head(fat)
+str(fat)
+summary(fat$weight)
+plot(fat$weight)
+
+summary(fat$height)
+plot(fat$height)
+
+fat <- fat %>%
+  dplyr::select(!c(siri, density, free)) %>%
+  filter(brozek != 0, height > 40, weight < 350)
+
+plot(fat$weight)
+plot(fat$height)
+
+```
+
+
+## Modelos
+
+En primer lugar se consideraron tres modelos lineales generalizados con función liga identidad y distribución Gausiana. El primer modelo tiene efectos principales, el segundo modelo tiene efectos principales e interacciones y el tercer modelo tiene efectos principales, interacciones y el cuadrado de las variables.
+
+Luego, se añadio al proceso de entrenamiento la selección de variables usando el criterio BIC y el método de Lasso. Este nuevo proceso de entrenamiento se aplicó a los tres modelos anteriores.
+
+Por último, se consideraron los tres modelos anteriores pero con función liga inversa y distribución Gamma. En cuanto al proceso de entrenamiento, se uso la selección de variables usando el método Lasso.
+
+
+```{r entrenamiento de modelos, include = FALSE}
+
+# Definimos los parametros del 5-CV
+set.seed(1)
+K <- 5
+n <- dim(fat)[1]
+labK <- rep(1:K, length.out = n)
+Pliegues <- sample(labK)
+
+#### i Modelo Gaussiano con liga identidad ####
+
+###### Modelo con efectos principales ######
+# Descripcion del modelo
+modelo1 <- lm(brozek ~ ., data = fat)
+summary(modelo1)
+
+mod1KCV <- function(x, Plie, Dat){
+  train <- which(Plie != x)
+  test = (-train)
+  mod1t = lm(brozek ~ ., data = Dat[train,])
+  predm1t = predict(mod1t, Dat[test,])
+  MSE=mean((Dat$brozek[test]-predm1t)^2)
+  return(MSE)
+}
+
+MSE.K.mod1 = sapply(1:K, mod1KCV, Plie = Pliegues, Dat = fat)
+(MSE.KCV.mod1=mean(MSE.K.mod1))
+# 17.08772
+
+
+###### Modelo con efectos principales e interacciones ######
+# Descripcion del modelo
+modelo2 <- lm(brozek ~ .^2, data = fat)
+summary(modelo2)
+
+mod2KCV <- function(x, Plie, Dat){
+  train <- which(Plie != x)
+  test = (-train)
+  mod1t = lm(brozek ~ .^2, data = Dat[train,])
+  predm1t = predict(mod1t, Dat[test,])
+  MSE=mean((Dat$brozek[test]-predm1t)^2)
+  return(MSE)
+}
+
+MSE.K.mod2 = sapply(1:K, mod2KCV, Plie = Pliegues, Dat = fat)
+(MSE.KCV.mod2 = mean(MSE.K.mod2))
+# 56.6425
+
+
+#### Modelo con efectos principales, interacciones y cuadrado de las variables ####
+# Descripcion del modelo
+compLin <- as.formula(paste0("brozek ~ .^2 + ", paste0("I(", colnames(fat)[-1], "^2)", collapse = " + ")))
+modelo3 <- lm(compLin, data = fat)
+summary(modelo3)
+
+mod3KCV <- function(x, Plie, Dat){
+  train <- which(Plie != x)
+  test = (-train)
+  mod1t = lm(compLin, data = Dat[train,])
+  predm1t = predict(mod1t, Dat[test,])
+  MSE=mean((Dat$brozek[test]-predm1t)^2)
+  return(MSE)
+}
+
+
+MSE.K.mod3 = sapply(1:K, mod3KCV, Plie = Pliegues, Dat = fat)
+(MSE.KCV.mod3 = mean(MSE.K.mod3))
+# 90.41858
+
+
+
+#### ii Seleccion de variables con criterio BIC ####
+set.seed(123)
+mod3RHM=function(x, Plie, Dat, forme, upform){
+  train <- which(Plie != x)
+  test <- (-train)
+  assign("DatosAux", Dat[train,], envir = .GlobalEnv) #Cuidado stepAIC o step buscan la base de datos en el environment global cuando se usa scope 
+  modAux <- lm(forme, data = DatosAux)
+  penAux <- log(dim(DatosAux)[1])
+  modtr <- stepAIC(modAux, scope =list(upper = upform, lower = ~1), trace = FALSE,direction ="both", k=penAux)
+  predte <- predict(modtr, Dat[test,])
+  MSE <- mean((fat$brozek[test] - predte)^2)
+  return(MSE)
+}
+
+###### Modelo con efectos principales ######
+forme1 <- as.formula("brozek ~ .")
+upform1 <- as.formula("~ .")
+
+# se requiere definir la penalización para BIC
+pen <- log(dim(fat)[1])
+
+modelo1BIC <- stepAIC(modelo1, scope = list(upper = upform1, lower = ~ 1), trace = FALSE, direction = "both", k = pen)
+summary(modelo1BIC)
+
+# Medición del poder predictivo
+MSE_B_modelo1BIC <- NA
+for(ik in 1:K){
+  MSE_B_modelo1BIC[ik] <- mod3RHM(ik, Plie = Pliegues, Dat = fat, forme = forme1, upform = upform1)
+}
+(MSE_RHM_modelo1BIC <- mean(MSE_B_modelo1BIC))
+# 16.88585
+
+
+###### Modelo con efectos principales e interacciones ######
+forme2 <- as.formula("brozek ~ .^2")
+upform2 <- as.formula("~ .^2")
+
+# se requiere definir la penalización para BIC
+pen <- log(dim(fat)[1])
+
+modelo2BIC <- stepAIC(modelo2, scope = list(upper = upform2, lower = ~ 1), trace = FALSE, direction = "both", k = pen)
+summary(modelo2BIC)
+
+# Medición del poder predictivo
+MSE_B_modelo2BIC <- NA
+for(ik in 1:K){
+  MSE_B_modelo2BIC[ik] <- mod3RHM(ik, Plie = Pliegues, Dat = fat, forme = forme2, upform = upform2)
+}
+(MSE_RHM_modelo2BIC <- mean(MSE_B_modelo2BIC))
+# 83.47374
+
+
+#### Modelo con efectos principales, interacciones y cuadrado de las variables ####
+forme3 <- as.formula(paste0("brozek ~ .^2 + ", paste0("I(", colnames(fat)[-1], "^2)", collapse = " + ")))
+upform3 <- as.formula(paste0("~ .^2 + ", paste0("I(", colnames(fat)[-1], "^2)", collapse = " + ")))
+
+# se requiere definir la penalización para BIC
+pen <- log(dim(fat)[1])
+
+modelo3BIC <- stepAIC(modelo3, scope = list(upper = upform3, lower = ~ 1), trace = FALSE, direction = "both", k = pen)
+summary(modelo3BIC)
+
+# Medición del poder predictivo
+MSE_B_modelo3BIC <- NA
+for(ik in 1:K){
+  MSE_B_modelo3BIC[ik] <- mod3RHM(ik, Plie = Pliegues, Dat = fat, forme = forme3, upform = upform3)
+}
+(MSE_RHM_modelo3BIC <- mean(MSE_B_modelo3BIC))
+# 206.4342
+
+
+###### iii Seleccion de variables con metodo lasso ######
+set.seed(1234)
+mod4RHM=function(x, Plie, Dat, forme){
+  train <- which(Plie != x)
+  test <- (-train)
+  Xmod4ttotal <- model.matrix(forme, data=Dat)[,-1]
+  Xmod4t <- Xmod4ttotal[train, ]
+  Ymod4t <- Dat[train, "brozek"] 
+  mod4t.lasso.tun <- cv.glmnet(Xmod4t, Ymod4t, nfolds = 5, type.measure ="mse", gamma = 0, relax = FALSE, family = gaussian("identity"), nlambda = 50)
+  predte <- predict(mod4t.lasso.tun, newx = Xmod4ttotal[test,], type = "response", s = "lambda.min")
+  MSE <- mean((Dat$brozek[test]-predte)^2)
+  return(MSE)
+}
+
+
+###### Modelo con efectos principales ######
+set.seed(1)
+MSE_B_modelo1lasso <- sapply(1:K, mod4RHM, Plie = Pliegues, Dat = fat, forme = forme1)
+(MSE_RHM_modelo1lasso <- mean(MSE_B_modelo1lasso))
+# 16.98819
+
+###### Modelo con efectos principales, interacciones y cuadrado de las variables ######
+set.seed(1)
+MSE_B_modelo2lasso <- sapply(1:K, mod4RHM, Plie = Pliegues, Dat = fat, forme = forme2)
+(MSE_RHM_modelo2lasso <- mean(MSE_B_modelo2lasso))
+# 16.31596
+
+###### Modelo con efectos principales e interacciones ######
+set.seed(1)
+MSE_B_modelo3lasso <- sapply(1:K, mod4RHM, Plie = Pliegues, Dat = fat, forme = forme3)
+(MSE_RHM_modelo3lasso <- mean(MSE_B_modelo3lasso))
+# 16.30106
+
+
+###### iii Modelo gamma con liga inversa y metodo BIC ######
+modeloG1 <- glm(brozek ~ ., family = Gamma, data = fat)
+modeloG2 <- glm(brozek ~ .^2, family = Gamma, data = fat)
+modeloG3 <- glm(compLin, family = Gamma, data = fat)
+
+Gmod3RHM <- function(x, Plie, Dat, forme){
+  train <- which(Plie != x)
+  test <- (-train)
+  Xmod4ttotal <- model.matrix(forme, data=Dat)[,-1]
+  Xmod4t <- Xmod4ttotal[train, ]
+  Ymod4t <- Dat[train, "brozek"] 
+  mod4t.lasso.tun <- cv.glmnet(Xmod4t, Ymod4t, nfolds = 5, type.measure ="mse", gamma = 0, relax = FALSE, family = Gamma("inverse"), nlambda = 50)
+  predte <- predict(mod4t.lasso.tun, newx = Xmod4ttotal[test,], type = "response", s = "lambda.min")
+  MSE <- mean((Dat$brozek[test]-predte)^2)
+  return(MSE)
+}
+
+###### Modelo con efectos principales ######
+set.seed(1)
+forme1 <- as.formula("brozek ~ .")
+MSE_B_modeloG1lasso <- sapply(1:K, Gmod3RHM, Plie = Pliegues, Dat = fat, forme = forme1)
+(MSE_RHM_modeloG1lasso <- mean(MSE_B_modeloG1lasso))
+# 32.96021
+
+###### Modelo con efectos principales e interacciones ######
+set.seed(1)
+forme2 <- as.formula("brozek ~ .^2")
+MSE_B_modeloG2lasso <- sapply(1:K, Gmod3RHM, Plie = Pliegues, Dat = fat, forme = forme2)
+(MSE_RHM_modeloG2lasso <- mean(MSE_B_modeloG2lasso))
+#24.74873
+
+
+###### Modelo con efectos principales e interacciones ######
+set.seed(1)
+forme3 <- as.formula(paste0("brozek ~ .^2 + ", paste0("I(", colnames(fat)[-1], "^2)", collapse = " + ")))
+MSE_B_modeloG3lasso <- sapply(1:K, Gmod3RHM, Plie = Pliegues, Dat = fat, forme = forme3)
+(MSE_RHM_modeloG3lasso <- mean(MSE_B_modeloG3lasso))
+# 24.15794
+
+```
+
+
+
+## Resultados
+
+En el Cuadro \@ref(tab:resultados) se puede observar el poder predictivo de los modelos anteriormente descritos.
+
+
+```{r resultados}
+
+# Vector de datos
+poderPredictivo <- c(MSE.KCV.mod1,
+MSE.KCV.mod2,
+MSE.KCV.mod3,
+#MSE_RHM_modelo1BIC,
+#MSE_RHM_modelo2BIC,
+#MSE_RHM_modelo3BIC,
+MSE_RHM_modelo1lasso,
+MSE_RHM_modelo2lasso,
+MSE_RHM_modelo3lasso,
+MSE_RHM_modeloG1lasso,
+MSE_RHM_modeloG2lasso,
+MSE_RHM_modeloG3lasso)
+
+
+# Crear el dataframe con los títulos y los valores
+dfMC <- data.frame("Poder predictivo" = poderPredictivo)
+rownames(dfMC) <- c("Gaussian P",
+                    "Gaussian P + I",
+                    "Gaussian P + I + C",
+#                   "Gaussian P | BIC",
+#                    "Gaussian P + I | BIC",
+#                    "Gaussian P + I + C | BIC",
+                    "Gaussian P | Lasso",
+                    "Gaussian P + I | Lasso",
+                    "Gaussian P + I + C | Lasso",
+                    "Gamma P | Lasso",
+                    "Gamma P + I | Lasso",
+                    "Gamma P + I + C | Lasso"
+                    )
+
+#Formato de tabla
+kable(dfMC, booktabs = T,
+      align = c("c", "c"), 
+      linesep = "",
+      caption = "Poder predictivo de cada modelo, donde P indica componente principales, I indica interacciones y C indica variables al cuadrado. Por su parte, BIC y Lasso indican que método de selección de variables se utilizó.") %>%
+  kable_styling(latex_options = "HOLD_position")
+
+```
+
+
+Como se puede observar del Cuadro \@ref(tab:resultados) el modelo con mejor poder predictivo es aquel con liga identidad, distribución Gausiana y componente lineal con efectos principales, interacciones y variables al cuadrado, y en el que se realiza selección de variables con el método Lasso.
+
+Se observa que en los modelos sin selección de variables y con selección de variables usando
+el criterio BIC, el poder predictivo empeora conforme se vuelve más complejo el componente lineal.
+Por su parte, los modelos que usan la selección de variables con el método Lasso tienen un mejor
+poder predictivo conforme se vuelve más complejo el componente lineal.
+Esto puede deberse a que los modelos con componente lineal más complejo tienden a sobreajustar
+y no se desempeñan bien en nuevas observaciones.
+Sin embargo, con el método Lasso se tiene una buena selección de variables para poder predecir de buena forma las nuevas observaciones sin necesidad de tener un sobreajuste.
+
+Finalmente, los modelos con liga identidad y distribucion Gausiana tuvieron un mejor poder
+predictivo que sus respectivos modelos con liga inversa y distribucion Gamma.
+
+
+Las variables que más se seleccionaron en los modelos con el método Lasso se encuentran: age, height, abdom, writst, age:abdom, height:wrist.
+
+El modelo con mejor poder predictivo tiene la siguiente forma:
+
+$$
+E[Y] = \beta_0 + \beta_1x_{abdom} + \beta_2x^2_{height} + \beta_3x_{age}x_{adipos} + \beta_4x_{age}x_{abdom} +  \beta_5x_{height}x_{wrist}
+$$
+
+\newpage
+
+```{r setup2, include=FALSE}
+
+######## Ejercicio 2 ##########
+# Poder predictivo (clasificación supervisada) 
+#Limpiamos entorno
+rm(list = ls(all.names = TRUE))
+gc()
+
+## Datos
+library(mlbench)
+
+## Manejo y limpieza de datos
+library(dplyr)
+library(tidyr)
+library(plyr)
+library(tibble)
+library(forcats)
+library(broom)
+
+## Gráficas
+library(ggplot2)
+library(GGally)
+library(ggpubr)
+library(corrplot)
+library(RColorBrewer)
+
+## Selección de variables
+library(MASS)
+library(bestglm)
+library(glmnet)
+
+# Remuestro
+library(rsample)
+library(caret)
+
+#Calculo en paralelo
+library(purrr)
+library(furrr)
+library(future)
+
+#PCA
+library(factoextra)
+
+#Multiple plots en 1 arrange (ggplot)
+library(patchwork)
+
+#Librerias para prediccion
+library(ranger)
+library(e1071)
+library(class)
+
+#Estilizacion de tablas
+library(kableExtra) 
+
+#Datos corregidos del National Institute of 
+#Diabetes and Digestive and Kidney Diseases
+data(PimaIndiansDiabetes2)
+```
+
+```{r warn, include=FALSE} 
+#Eliminamos warnings
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+```{r setup2NA, include=FALSE}
+#Guardamos Datos
+Datos = PimaIndiansDiabetes2
+#Borramos Database original del enviroment
+rm(PimaIndiansDiabetes2)
+#Resumen de variables
+str(Datos)#Detectamos NA's
+summary(Datos) #Todas las covariables son numericas
+
+#Preprocesamiento
+#Calculamos NA's
+sum(apply(t(!is.na(Datos)),2, function(x) all(x))) #Se conservan 392 observaciones
+length(na.omit(Datos)$pregnant) #Confirmamos
+#Eliminamos NA's
+DatosL = na.omit(Datos)
+rownames(DatosL)  = NULL #Reseeteamos Index
+#Cambiamos labels del Factor
+levels(DatosL$diabetes) <- c("No","Yes")
+```
+
+\newpage
+
+# Ejercicio 2
+
+## Datos
+
+La base de datos $PimaIndiansDiabetes2$ del paquete $mlbench$ contiene información recopilada por el National Institute of Diabetes and Digestive and Kidney Diseases, la cual incluye datos de 768 pacientes. Sin embargo, se identificaron valores inusuales con registros de 0, los cuales se corrigieron y se convirtieron en valores NA (no disponibles). Debido a la presencia de NA's en los datos, se decidió eliminar todas aquellas observaciones que tuvieran al menos una variable con un registro NA. Como resultado, se redujo el conjunto de datos a un total de 392 observaciones, en comparación con las 768 observaciones originales. Dentro de este subconjunto, se encontraron 262 pacientes diagnosticados con diabetes y 130 pacientes sin esta condición.
+
+El objetivo principal de este estudio es realizar una predicción óptima sobre la presencia o ausencia de diabetes en futuros pacientes. Para lograr esto, se utilizarán las 8 covariables clínicas presentadas en el estudio. Para determinar la regla de decisión óptima a utilizar, se hará uso de una selección de modelos de clasificación supervisada a través de la comparación de su poder predictivo. El preprocesamiento de los datos y la optimización de algunos hiperparámetros serán fundamentales para determinar la regla de decisión final. Además, se utilizará el criterio de máxima probabilidad con corte en 0.5.
+ 
+## Análisis Descriptivo {#Descr}
+
+\begin{table}[H]
+\centering
+\begin{tabular}{>{\flushleft\arraybackslash}m{3cm}>{\flushleft\arraybackslash}m{13cm}}
+\toprule
+\multicolumn{1}{l}{Variable}                &  \multicolumn{1}{l}{Descripción}                         
+                                 \\ \midrule
+\texttt{pregnant}               & Número de veces embarazada(Entero).           \\
+\texttt{glucose}                & Concentración de glucosa en plasma(prueba de tolerancia a la glucosa)(Entero). \\
+\texttt{pressure}               & Tensión arterial diastólica(mm Hg)(Entero). 
+        \\
+\texttt{triceps}                & Espesor del pliegue cutáneo del tríceps(mm)(Entero).
+        \\
+\texttt{insulin}                & Insulina sérica de 2 horas(mu U/ml)(Contínua).
+        \\   
+\texttt{mass}                   & Indice de masa corporal (peso en kg/(altura en m)$^2$)(Contínua).
+        \\
+\texttt{pedigree}               & Función pedigrí de la diabetes(Contínua).
+        \\
+\texttt{age}                    & Edad en años(Int). 
+        \\
+\textcolor{blue}{\texttt{diabetes}} & \textcolor{blue}{Variable binaria de dos niveles: (2 = pos = Paciente con Diabetes, 1 = neg = Paciente sin Diabetes)}. \\ \bottomrule
+\end{tabular}
+\caption{\label{tab:t1} Variables originales del DataFrame \texttt{PimaIndiansDiabetes2}, descripción y tipo de datos}
+\end{table}
+
+A partir de la Figura \@ref(fig:Boxplots) se observa que:
+```{=tex}
+\begin{itemize}
+\itemsep0em 
+  \item El número de no diabéticos observados es casi el doble que el de diabéticos.
+  \item Existen valores atípicos en el número de embarazos, llegando a presentar un paciente con 15 embarazos.
+  \item Las personas con mayor numero de embarazos tienden a apresentar diabetes.
+  \item Las personas con mayor edad presentan diabetes, mientras que los más jovenes no.
+  \item Las personas que poseen diabetes concentran un mayor nivel de glucosa e insulina.
+  \item Las variables pressure, insulin, mass y pedigreeno presentan muchas diferencias entre los grupos, por lo que se intuye, su poder predictivo sea bajo.
+\end{itemize}
+```
+
+```{r BoxplotsAux, echo=FALSE}
+variables <- colnames(DatosL)[-length(colnames(DatosL))]
+#Graficos de boxplot por cada covariable
+plots <- lapply(variables, function(var) {
+  ggplot(DatosL, aes_string(y = var, color = "diabetes")) +
+    geom_boxplot(size = 1.5)
+})
+```
+```{r PCAAux, echo=FALSE}
+#Obtenemos componentes principales
+PCA_M0V1 <- prcomp(scale(DatosL[,-9], scale = TRUE), 
+                   scale = FALSE)
+#Graficamos los primeros 3 PCA's y agrupamos segun la condicion de diabetes
+p1 <- fviz_pca_biplot(PCA_M0V1, axes = c(1,2),
+                      habillage = DatosL$diabetes,
+                      label="var", title =  "PC1 vs PC2") + theme_bw()
+p2 <- fviz_pca_biplot(PCA_M0V1, axes = c(2,3),
+                      habillage = DatosL$diabetes,
+                      label="var", title =  "PC2 vs PC3") + theme_bw()
+p3 <- fviz_pca_biplot(PCA_M0V1, axes = c(1,3),
+                      habillage = DatosL$diabetes,
+                      label="var", title =  "PC1 vs PC3") + theme_bw()
+```
+
+```{r Boxplots,echo=FALSE,warning=FALSE, results='hide',message=FALSE, fig.cap = "Conjunto de Boxplots por cada variable independiente y diferenciados según la presencia o ausencia de diabetes", out.width="45%",fig.align='center'}
+#Ajustamos boxplots en un solo arrange
+pdf(NULL)
+res <- ggarrange(plotlist = plots, nrow = 2, ncol = 4, common.legend = TRUE) 
+dev.off()
+res
+```
+A partir de la Figura \@ref(fig:PCA1) se observa que:
+```{=tex}
+\begin{itemize}
+\itemsep0em 
+  \item En el Componente Principal 1, a medida que aumentan los valores de este componente, principalmente los valores de glucosa, edad, insulina, mass, triceps y pressure, también aumentan de manera positiva. Esto crea una partición de los datos, evidente en el 1° y 3° gráfico, entre aquellos que tienen diabetes y los que no la tienen. Los individuos con diabetes presentan valores más altos de glucosa, edad, insulina, etc., como era de esperar. Por otro lado, aquellos sin diabetes se encuentran en los valores negativos del Componente Principal 1, lo que indica que tienen niveles más bajos de las variables mencionadas anteriormente.
+  \item En cuanto al Componente Principal 2, los datos se mezclan más y no hay una interpretación clara. 
+  \item  En el Componente Principal 3, podemos observar que las variables más representativas son glucosa e insulina, y tienen una correlación negativa. Esto significa que a medida que disminuyen los valores de este componente, los valores de glucosa e insulina aumentan. Esto se corresponde con el hecho de que los pacientes sin diabetes se ubiquen en la parte positiva de dicho componente, lo que indica que tienen valores más bajos de insulina y glucosa. Sin embargo, esta conclusión no se puede generalizar debido a la dispersión de los datos para las personas con diabetes en este componente.
+\end{itemize}
+```
+
+## Algoritmos de clasificación {#Algo}
+
+```{=tex}
+\begin{itemize}
+\itemsep0em 
+  \item 1. Regresión Logística (Solo efectos principales)
+  \item 2. Regresión Logística (Efectos principales, interacciones y términos cuadrados)
+  \item 3. Regresión Logística (Efectos principales + selección por pasos con criterio BIC)
+  \item 4. Regresión Logística (Efectos principales, interacciones y términos cuadrados
++ selección por pasos con criterio BIC)
+  \item 5. Regresión Logística (Efectos principales, interacciones y términos cuadrados
++ selección usando Lasso). Hiperparámetro tuneados: Lambda
+  \item 6. Regresión Probit (Efectos principales, interacciones y términos cuadrados + selección por pasos con criterio BIC)
+  \item 7. Método Naive
+  \item 8. LDA contínuo (Análisis de Discriminante Lineal)
+  \item 9. QDA contínuo (Análisis de Discriminante Cuadrático)
+  \item 10. K vecinos mas cercanos. Hiperparámetro tuneados:K
+  \item 11. Random Forest (200 arboles). Hiperparámetro tuneados: Mtry, NodeSize
+\end{itemize}
+```
+\newpage
+```{r PCA1,echo=FALSE,warning=FALSE, results='hide',message=FALSE, fig.cap = "Gráfico de dispersión de los datos proyectados sobre los primeros 3 Componentes Principales. Cada observación se diferencía según la condición de diabetes.", out.width="70%",fig.align='center', fig.show='hold'}
+pdf(NULL)
+a = p1/(p2+p3)
+dev.off()
+a
+```
+
+```{r Metodos, include=FALSE}
+#### Funciones Aux ####
+#Funcion que particiona los datos dado un input de indices
+SplitTT = function(x) {
+  
+  #Obtenemos training y testing
+  Train= training(x)
+  Test =  testing(x)
+  
+  Particion = list(Train = Train, 
+                   Test = Test)
+  return(Particion)
+}
+
+#Funcion que dados los valores de una matrix de confusion
+#regresa las 3 diferentes medidades de error para evaluar el
+#poder de prediccion del modelo
+ErrorMeasure = function(MC.test) {
+  #Calculamos Errores de Prediccion
+  #Clase 1 (No Diabetes)- Especificidad
+  Y1 = MC.test[1,1]/sum(MC.test[,1])
+  #Clase 2 (Si Diabetes)- Sensibilidad
+  Y2 = MC.test[2,2]/sum(MC.test[,2])
+  #TCC (Precision)
+  Global = sum(diag(MC.test))/sum(MC.test)
+  
+  Errores <- data.frame(Y1, Y2, Global)
+  return(Errores)
+  
+}
+
+#Funcion que dado un metodo de prediccion seleccionado
+#y el numero de nucleos elegidos, te regresa un dataframe
+#con el poder de prediccion promedio estimado
+Resultados = function(Metodo, workers){
+
+  #Activamos calculo en paralelo
+  plan(strategy = multisession, 
+       workers = workers)
+  
+  Aux1 = map(.x = Splits, 
+             .f = ~ SplitTT(.x)) %>%
+    transpose() %>% 
+    future_pmap(.f = get(Metodo), .progress = TRUE, .options = furrr_options(seed = TRUE)) %>%
+    transpose() %>% 
+    pmap(.f = ~ ErrorMeasure(.x)) %>% 
+    ldply(data.frame) %>% 
+    mutate_if(is.numeric, ~.*100) %>%
+    mutate_if(is.numeric, round, 3) %>%
+    add_column(Metodo = Metodo, 
+               .before  = "Y1")
+  
+  Aux2 = Aux1 %>% 
+    summarise(Y1 = mean(Y1),
+              Y2 = mean(Y2),
+              Global = mean(Global))%>%
+    mutate_if(is.numeric, round, 3) %>%
+    add_column(Metodo = Metodo, 
+               .before  = "Y1")
+  return(list(Global = Aux2))
+}
+
+MasUsadas = function(Metodo, workers){
+  
+  #Activamos calculo en paralelo
+  plan(strategy = multisession, 
+       workers = workers)
+  
+  Aux1 = map(.x = Splits, 
+             .f = ~ SplitTT(.x)) %>%
+    transpose() %>% 
+    future_pmap(.f = get(Metodo), .progress = TRUE, .options = furrr_options(seed = TRUE)) %>%
+    transpose() %>% unlist() %>% table() %>% as.data.frame()
+  
+  return(Aux1)
+}
+### Ajustes ####
+#Usaremos:
+# Repeated holdout method
+# B=50, train (80%) y test (20%)
+# Calculo de la tasa de clasificacion correcta global como
+# medida de poder predictivo
+
+#Modelos a ajustar:
+# 1. Reg Logistica (Solo efectos principales)
+# 2. Reg Logistica (Efectos principales, interacciones y terminos cuadrados)
+# 3. Reg Logistica (Efectos principales + seleccion por pasos con criterio BIC)
+# 4. Reg Logistica (Efectos principales, interacciones y terminos cuadrados 
+#                   + seleccion por pasos con criterio BIC)
+# 5. Reg Logistica (Efectos principales, interacciones y terminos cuadrados 
+#                   + seleccion usando Lasso con K-CV y Error Rate para tunear lambda)
+# 6. Reg liga probit (Efectos principales, interacciones + seleccion step por BIC)
+# 7. Metodo Naive
+# 8. LDA continuo  (considerando variables binarias)
+# 9. QDA continuo, (considerando variables binarias)
+# 10. K vecinos mas cercanos
+# 11. Random Forest (200 arboles y tuneo de parametro mtry)
+
+#Ajustamos semilla
+set.seed(1122)
+B = 50
+
+#Creamos particion con caret para el Holdout Method ya estratificada segun "diabetes"
+Partition = createDataPartition(DatosL$diabetes, p = 0.80, list = FALSE, times = B)
+
+#Creamos lista de splits a partir de la Particion dada por caret
+Splits <- map(seq_len(ncol(Partition)), ~ make_splits(list(
+  analysis = Partition[, .x],
+  assessment = as.integer(rownames(DatosL[(-Partition[, .x]), ]))
+), DatosL))
+
+#### Metodos ####
+# 1. Reg Logistica (Solo efectos principales)
+Modelo1 <- function(Train, Test) {
+  
+  #Ajustamos modelo
+  logit <- glm(formula = diabetes ~., 
+               family = binomial(link = "logit"), 
+               data = Train)
+  
+  #Predecimos valores y clasificamos por regla de
+  #maxima probabilidad (corte en 0.5)
+  PredTest <- (predict(object = logit, 
+                        newdata = Test, 
+                        type = "response") > .5) %>%
+    #Se clasifica en los que si tienen diabetes
+    ifelse(levels(DatosL$diabetes)[2], 
+    #Se clasifican en los que no tienen diabetes
+           levels(DatosL$diabetes)[1])
+  
+  #Obtenemos matrix de confusion
+  MC.test <- table(PredTest, Test$diabetes)
+  
+  return(list(MC.test))
+}
+
+# 2. Reg Logistica (Efectos principales, interacciones y terminos cuadrados)
+Modelo2 <- function(Train, Test) {
+  
+  #Definimos formula del modelo
+  form <- formula(paste('diabetes ~ . ^2 + ', 
+                        paste(paste0('I(', colnames(DatosL)[-9], '^2)'), collapse = " + ")))
+  
+  #Ajustamos modelo
+  logit <- glm(formula = form, 
+               family = binomial(link = "logit"), 
+               data = Train)
+  
+  #Predecimos valores y clasificamos por regla de
+  #maxima probabilidad (corte en 0.5)
+  PredTest <- (predict(object = logit, 
+                       newdata = Test, 
+                       type = "response") > .5) %>%
+    #Se clasifica en los que si tienen diabetes
+    ifelse(levels(DatosL$diabetes)[2], 
+           #Se clasifican en los que no tienen diabetes
+           levels(DatosL$diabetes)[1])
+  
+  #Obtenemos matrix de confusion
+  MC.test <- table(PredTest, Test$diabetes)
+  
+  return(list(MC.test))
+}
+
+# 3. Reg Logistica (Efectos principales + seleccion por pasos con criterio BIC)
+Modelo3 <- function(Train, Test) {
+
+  #Modelo Nulo.
+  AjusteNulo <- glm(formula = diabetes ~ 1, 
+                    family =  binomial(link = "logit"), 
+                    data = Train)
+  
+  #Modelo Saturado.
+  AjusteSaturado <- glm(formula = diabetes ~., 
+                        family =  binomial(link = "logit"), 
+                        data = Train)
+  
+  #Aplicamos seleccion via step forward
+  logit_forward <- step(object = AjusteNulo,
+                        scope = list(lower = AjusteNulo, 
+                                     upper = AjusteSaturado),
+                        trace = FALSE, 
+                        direction = "forward", 
+                        k = log(dim(Train)[1]))
+  
+  #Predecimos valores y clasificamos por regla de
+  #maxima probabilidad (corte en 0.5)
+  PredTest <- (predict(object = logit_forward, 
+                       newdata = Test, 
+                       type = "response") > .5) %>%
+    #Se clasifica en los que si tienen diabetes
+    ifelse(levels(DatosL$diabetes)[2], 
+           #Se clasifican en los que no tienen diabetes
+           levels(DatosL$diabetes)[1])
+  
+  #Obtenemos matrix de confusion
+  MC.test <- table(PredTest, Test$diabetes)
+  
+  return(list(MC.test))
+}
+
+# 4. Reg Logistica (Efectos principales, interacciones y terminos cuadrados 
+#                   + seleccion por pasos con criterio BIC)
+Modelo4 <- function(Train, Test) {
+  
+  #Definimos formula del modelo con E.P y terminos cuadraticos
+  form <- formula(paste('diabetes ~ . ^2 + ', 
+                        paste(paste0('I(', colnames(DatosL)[-9], '^2)'), collapse = " + ")))
+  
+  #Modelo Nulo.
+  AjusteNulo <- glm(formula = diabetes ~ 1, 
+                    family =  binomial(link = "logit"), 
+                    data = Train)
+  
+  #Modelo Saturado.
+  AjusteSaturadoCuad <- glm(formula = form, 
+                        family =  binomial(link = "logit"), 
+                        data = Train)
+  
+  #Aplicamos seleccion via step forward
+  logit_forward <- step(object = AjusteNulo,
+                        scope = list(lower = AjusteNulo, 
+                                     upper = AjusteSaturadoCuad),
+                        trace = FALSE, 
+                        direction = "forward", 
+                        k = log(dim(Train)[1]))
+  
+  #Predecimos valores y clasificamos por regla de
+  #maxima probabilidad (corte en 0.5)
+  PredTest <- (predict(object = logit_forward, 
+                       newdata = Test, 
+                       type = "response") > .5) %>%
+    #Se clasifica en los que si tienen diabetes
+    ifelse(levels(DatosL$diabetes)[2], 
+           #Se clasifican en los que no tienen diabetes
+           levels(DatosL$diabetes)[1])
+  
+  #Obtenemos matrix de confusion
+  MC.test <- table(PredTest, Test$diabetes)
+  
+  return(list(MC.test))
+}
+
+
+# 5. Reg Logistica (Efectos principales, interacciones y terminos cuadrados 
+#                   + seleccion usando Lasso con K-CV y Error Rate para tunear lambda)
+Modelo5 <- function(Train, Test) {
+  
+  #Definimos formula del modelo con E.P y terminos cuadraticos
+  form <- formula(paste('diabetes ~ . ^2 + ', 
+                        paste(paste0('I(', colnames(DatosL)[-9], '^2)'), collapse = " + ")))
+  
+  #Definimos matrices diseño
+  XTrain <- model.matrix(form, data = Train)[,-1]
+  YTrain <- Train$diabetes
+  
+  XTest <- model.matrix(form, data = Test)[,-1]
+  
+  #Semilla
+  set.seed(1122)
+  
+  #Tuneamos la lambda con K-CV, 5 bloques y evaluamos sobre 100 lambdas
+  #La metrica usada es tasa de clasificacion global erronea
+  #Usamos estimadores lasso (Relax = False)
+  lasso.tun = cv.glmnet(x = XTrain, y = YTrain,
+                        nfolds = 5,
+                        type.measure = "class",
+                        gamma = 0,
+                        relax = FALSE,
+                        family = "binomial",
+                        nlambda = 100)
+  
+  #Predecimos valores y clasificamos por regla de
+  #maxima probabilidad (corte en 0.5)
+  #Usamos lambda minima segun tasa de calif global erronea
+  PredTest <- (predict(object = lasso.tun, 
+                       newx = XTest, 
+                       type = "response",
+                       s = "lambda.min") > .5) %>%
+    #Se clasifica en los que si tienen diabetes
+    ifelse(levels(DatosL$diabetes)[2], 
+           #Se clasifican en los que no tienen diabetes
+           levels(DatosL$diabetes)[1])
+  
+  #Obtenemos matrix de confusion
+  MC.test <- table(PredTest, Test$diabetes)
+  
+  return(list(MC.test))
+}
+
+# 6. Reg con liga probit (Efectos principales, interacciones y terminos cuadraticos 
+#                         + seleccion step por BIC)
+Modelo6 <- function(Train, Test) {
+  
+  #Definimos formula del modelo con E.P y terminos cuadraticos
+  form <- formula(paste('diabetes ~ . ^2 + ', 
+                        paste(paste0('I(', colnames(DatosL)[-9], '^2)'), collapse = " + ")))
+  
+  #Modelo Nulo.
+  AjusteNulo <- glm(formula = diabetes ~ 1, 
+                    family =  binomial(link = "probit"), 
+                    data = Train)
+  
+  #Modelo Saturado.
+  AjusteSaturadoCuad <- glm(formula = form, 
+                            family =  binomial(link = "probit"), 
+                            data = Train)
+  
+  #Aplicamos seleccion via step forward
+  logit_forward <- step(object = AjusteNulo,
+                        scope = list(lower = AjusteNulo, 
+                                     upper = AjusteSaturadoCuad),
+                        trace = FALSE, 
+                        direction = "forward", 
+                        k = log(dim(Train)[1]))
+  
+  #Predecimos valores y clasificamos por regla de
+  #maxima probabilidad (corte en 0.5)
+  PredTest <- (predict(object = logit_forward, 
+                       newdata = Test, 
+                       type = "response") > .5) %>%
+    #Se clasifica en los que si tienen diabetes
+    ifelse(levels(DatosL$diabetes)[2], 
+           #Se clasifican en los que no tienen diabetes
+           levels(DatosL$diabetes)[1])
+  
+  #Obtenemos matrix de confusion
+  MC.test <- table(PredTest, Test$diabetes)
+  
+  return(list(MC.test))
+}
+
+# 7. Metodo Naive
+#Considera distribuciones normales para variables continuas
+Modelo7 <- function(Train, Test) {
+  
+  Naive <- naiveBayes(formula = diabetes~., 
+                   data = Train)
+  
+  #Se utiliza la regla de asignacion de maxima probabilidad
+  #con punto de corte >0.5
+  PredTest <- predict(object = Naive,
+                      newdata = Test)
+  
+  #Obtenemos matrix de confusion
+  MC.test <- table(PredTest, Test$diabetes)
+  
+  return(list(MC.test))
+}
+
+# 8. LDA continuo
+Modelo8 <- function(Train, Test) {
+  
+  LDA <- MASS::lda(formula = diabetes~., 
+                   data = Train)
+  
+  #Se utiliza la regla de asignacion de maxima probabilidad
+  #con punto de corte >0.5
+  PredTest <- predict(object = LDA,
+                      newdata = Test)$class
+  
+  #Obtenemos matrix de confusion
+  MC.test <- table(PredTest, Test$diabetes)
+  
+  return(list(MC.test))
+}
+
+# 9. QDA continuo
+Modelo9 <- function(Train, Test) {
+  
+  QDA <- MASS::qda(formula = diabetes~., 
+                   data = Train)
+  
+  #Se utiliza la regla de asignacion de maxima probabilidad
+  #con punto de corte >0.5
+  PredTest <- predict(object = QDA,
+                      newdata = Test)$class
+  
+  #Obtenemos matrix de confusion
+  MC.test <- table(PredTest, Test$diabetes)
+  
+  return(list(MC.test))
+}
+
+# 10. K vecinos mas cercanos (Variables estandarizadas)
+Modelo10 <- function(Train, Test) {
+  
+  #Semilla
+  set.seed(1122)
+  
+  #Definimos matrices diseño
+  XTrain <- scale(model.matrix(diabetes ~., data = Train)[,-1], scale = TRUE)
+  YTrain <- Train$diabetes
+  
+  XTest <- scale(model.matrix(diabetes ~., data = Test)[,-1], scale = TRUE)
+  
+  #Tuneamos el valor de K con K-CV, 5 bloques y evaluamos sobre 20 K's
+  #La metrica usada es tasa de clasificacion global erronea
+  knn.cross <- tune.knn(x = XTrain, y = YTrain, 
+                        k = 1:20,
+                        tunecontrol = tune.control(sampling = "cross"), 
+                        cross=5)
+  
+  #Predecimos valores y clasificamos por regla de
+  #maxima probabilidad (corte en 0.5)
+  #Usamos K que minimiza tasa de calif global erronea
+  PredTest <- knn(train = XTrain, test = XTest, YTrain, 
+                   k = knn.cross$best.parameters[[1]], 
+                   use.all = TRUE)
+  
+  #Obtenemos matrix de confusion
+  MC.test <- table(PredTest, Test$diabetes)
+  
+  return(list(MC.test))
+}
+
+# 11. Random Forest (200 arboles y tuneo de parametro mtry)
+Modelo11 <- function(Train, Test) {
+  
+  #Creamos malla de valores
+  malla_hyper <- expand.grid(
+    mtry       = seq(1,8,1),
+    node_size  = c(1,10,15))
+  
+  #Creamos nueva columna para el error out of bag (tuneo)
+  malla_hyper$OOBerr <- NA
+  
+  #Definimos Semilla
+  set.seed(1122)
+  
+  #Ciclo for de seleccion de arbol por reduccion de impureza ginit  
+  for(i in 1:nrow(malla_hyper)) {
+    rf <- ranger(
+      formula        = diabetes ~.,
+      data           = Train,
+      num.trees      = 200,
+      mtry           = malla_hyper$mtry[i],
+      min.node.size  = malla_hyper$node_size[i],
+      importance = 'impurity')
+    malla_hyper$OOBerr[i] <- rf$prediction.error
+  }
+  
+  #Mejor conjunto de hiperparametros
+  position <- which.min(malla_hyper$OOBerr) 
+  
+  #Random Forest tuneado
+  RF.Tune <- ranger(diabetes ~.,
+                    data = Train,
+                    num.trees = 200,
+                    min.node.size = malla_hyper$node_size[position], 
+                    mtry = malla_hyper$mtry[position],
+                    importance = 'impurity', 
+                    probability = FALSE)
+  
+  PredTest <- predict(object = RF.Tune,
+                      data = Test)
+  
+  MC.test <- table(PredTest$predictions, Test$diabetes)
+  
+  return(list(MC.test))
+  
+}
+
+#### Ejecucion ####
+
+#Mostramos numero de threads disponibles
+parallelly::availableCores()
+
+#Corremos los 11 modelos
+M1 <- Resultados(Metodo = "Modelo1",
+                 workers = 2)
+M2 <- Resultados(Metodo = "Modelo2",
+                 workers = 2)
+M3 <- Resultados(Metodo = "Modelo3",
+                 workers = 2)
+M4 <- Resultados(Metodo = "Modelo4",
+                 workers = 2)
+M5 <- Resultados(Metodo = "Modelo5",
+                 workers = 8)
+M6 <- Resultados(Metodo = "Modelo6",
+                 workers = 2)
+M7 <- Resultados(Metodo = "Modelo7",
+                 workers = 2)
+M8 <- Resultados(Metodo = "Modelo8",
+                 workers = 8)
+M9 <- Resultados(Metodo = "Modelo9",
+                 workers = 8)
+M10 <- Resultados(Metodo = "Modelo10",
+                 workers = 8)
+M11 <- Resultados(Metodo = "Modelo11",
+                  workers = 8)
+tuneo_values = c("-", "-", "-", "-", "lambda", "-", "-", "-", "-", "K", "mtry, node_size")
+```
+
+## Resultados
+```{r ResultadosAux, include=FALSE}
+#Guardamos evualaciones en un solo dataframe
+Errores <- rbind(M1[["Global"]], 
+                 M2[["Global"]],
+                 M3[["Global"]], 
+                 M4[["Global"]], 
+                 M5[["Global"]],
+                 M6[["Global"]],
+                 M7[["Global"]],
+                 M8[["Global"]],
+                 M9[["Global"]],
+                 M10[["Global"]],
+                 M11[["Global"]])
+
+#Agregamos columna de tuneo, renombramos columnas y ordenamos según TCC
+Errores$Tuneo = tuneo_values 
+Tabla = Errores %>% dplyr::rename(Especificidad = Y1, Sensibilidad = Y2, TCC = Global) %>% arrange(-TCC)
+```
+
+```{r Resultados, echo=FALSE}
+#Formato de tabla
+kable(Tabla, booktabs = T,
+      align = "c", 
+      linesep = "",
+      caption = "Comparación de Modelos de Clasificación ordenados con base en el TCC, Tomando en cuenta el poder predictivo por clase e hiperparámetros tuneados.",
+      format = "latex")
+```
+Para evaluar el poder predictivo de cada uno de los esquemas de clasificación presentados en \@ref(Algo) se utilizó el método de Repeated Holdout Method, donde se generaron 50 muestras aleatorias estratificadas según la condición de diabetes (B = 50), de la cual se obtuvieron los conjuntos para entrenar los modelos (Train) y para evaluar el poder predictivo (Test), en una poderación de 80%-20%, es decir, dada una muestra obtenida, 80% se utilizó para el conjunto Train y el 20%, para el conjunto Test.
+
+En el Cuadro \ref{tab:Resultados} se presentan los resultados obtenidos, tanto la tasa de Especificidad (Verdaderos negativos/Falsos negativos), la tasa de Sensibilidad (Verdaderos Positivos/Falsos Positivos) y la precisión o TCC, que mide el número de clasificaciones acertadas totales.
+
+Se observa que el modelo con mejor poder predictivo fue el modelo 3, que con base en \@ref(Algo), corresponde a un modelo de regresión logística que solo toma en cuenta efectos principales y se le aplica una selección de variables vía Step usando como criterio el BIC. Los siguientes modelos con mayor desempeño y no tan alejados del modelo 3, fueron el 6 (Regresión Probit con efectos principales, interacciones, términos cuadráticos y selección step por BIC) y el 1 (Regresión Logít con solo efectos principales).
+
+El modelo peor clasificado fue el modelo 2, una Regresión Logit con Efectos principales, interacciones y términos cuadrados sin ningún tipo de selección de variables. Por otro lado, los modelos con hiperparámetros tuneados tuvieron un rendimiento medio. El modelo de K-vecinos más cercanos tuvo un rendimiento pésimo aún haciendo un escalado a las variables predictoras.
+
+Nótese la gran diferencia de rendimiento entre el modelo con discriminante lineal(modelo 8) y el de discriminante cuadrático (modelo 9).
+
+Podemos observar que, en general, los modelo presentan poca sensibilidad, es decir, dado que los pacientes presentan diabetes, nuestro modelo predice que no la tienen. Dicho error es preocupante y se podría realizar un ajuste para disminuir la tasa de especificidad a cambio de aumentar la sensibilidad.
+```{r VariablesAux, include = FALSE}
+#### Variables Mas Usadas ####
+#Los metodos hacen una seleccion de variables y se pueden obtener los datos son el 3,4,5 y 6
+# 3. Reg Logistica (Efectos principales + seleccion por pasos con criterio BIC)
+variables3 <- function(Train, Test) {
+  
+  #Modelo Nulo.
+  AjusteNulo <- glm(formula = diabetes ~ 1, 
+                    family =  binomial(link = "logit"), 
+                    data = Train)
+  
+  #Modelo Saturado.
+  AjusteSaturado <- glm(formula = diabetes ~., 
+                        family =  binomial(link = "logit"), 
+                        data = Train)
+  
+  #Aplicamos seleccion via step forward
+  logit_forward <- step(object = AjusteNulo,
+                        scope = list(lower = AjusteNulo, 
+                                     upper = AjusteSaturado),
+                        trace = FALSE, 
+                        direction = "forward", 
+                        k = log(dim(Train)[1]))
+  
+  return(gsub("aux", "", names(coef(logit_forward))[-1]))
+}
+
+
+# 4. Reg Logistica (Efectos principales, interacciones y terminos cuadrados 
+#                   + seleccion por pasos con criterio BIC)
+variables4 <- function(Train, Test) {
+  
+  #Definimos formula del modelo con E.P y terminos cuadraticos
+  form <- formula(paste('diabetes ~ . ^2 + ', 
+                        paste(paste0('I(', colnames(DatosL)[-9], '^2)'), collapse = " + ")))
+  
+  #Modelo Nulo.
+  AjusteNulo <- glm(formula = diabetes ~ 1, 
+                    family =  binomial(link = "logit"), 
+                    data = Train)
+  
+  #Modelo Saturado.
+  AjusteSaturadoCuad <- glm(formula = form, 
+                            family =  binomial(link = "logit"), 
+                            data = Train)
+  
+  #Aplicamos seleccion via step forward
+  logit_forward <- step(object = AjusteNulo,
+                        scope = list(lower = AjusteNulo, 
+                                     upper = AjusteSaturadoCuad),
+                        trace = FALSE, 
+                        direction = "forward", 
+                        k = log(dim(Train)[1]))
+  
+  return(gsub("aux", "", names(coef(logit_forward))[-1]))
+}
+
+
+# 5. Reg Logistica (Efectos principales, interacciones y terminos cuadrados 
+#                   + seleccion usando Lasso con K-CV y Error Rate para tunear lambda)
+variables5 <- function(Train, Test) {
+  
+  #Definimos formula del modelo con E.P y terminos cuadraticos
+  form <- formula(paste('diabetes ~ . ^2 + ', 
+                        paste(paste0('I(', colnames(DatosL)[-9], '^2)'), collapse = " + ")))
+  
+  #Definimos matrices diseño
+  XTrain <- model.matrix(form, data = Train)[,-1]
+  YTrain <- Train$diabetes
+  
+  XTest <- model.matrix(form, data = Test)[,-1]
+  
+  #Semilla
+  set.seed(1122)
+  
+  #Tuneamos la lambda con K-CV, 5 bloques y evaluamos sobre 100 lambdas
+  #La metrica usada es tasa de clasificacion global erronea
+  #Usamos estimadores lasso (Relax = False)
+  lasso.tun = cv.glmnet(x = XTrain, y = YTrain,
+                        nfolds = 5,
+                        type.measure = "class",
+                        gamma = 0,
+                        relax = FALSE,
+                        family = "binomial",
+                        nlambda = 100)
+  #Obtenemos nombres de las covariables diferentes de 0
+  aux = coef(glmnet(x = XTrain, y = YTrain, family = binomial("logit"), lambda = lasso.tun$lambda.min))[,1]
+  
+  return(gsub("aux", "", names(aux[aux != 0])[-1]))
+}
+
+# 6. Reg con liga probit (Efectos principales, interacciones y terminos cuadraticos 
+#                         + seleccion step por BIC)
+variables6 <- function(Train, Test) {
+  
+  #Definimos formula del modelo con E.P y terminos cuadraticos
+  form <- formula(paste('diabetes ~ . ^2 + ', 
+                        paste(paste0('I(', colnames(DatosL)[-9], '^2)'), collapse = " + ")))
+  
+  #Modelo Nulo.
+  AjusteNulo <- glm(formula = diabetes ~ 1, 
+                    family =  binomial(link = "probit"), 
+                    data = Train)
+  
+  #Modelo Saturado.
+  AjusteSaturadoCuad <- glm(formula = form, 
+                            family =  binomial(link = "probit"), 
+                            data = Train)
+  
+  #Aplicamos seleccion via step forward
+  logit_forward <- step(object = AjusteNulo,
+                        scope = list(lower = AjusteNulo, 
+                                     upper = AjusteSaturadoCuad),
+                        trace = FALSE, 
+                        direction = "forward", 
+                        k = log(dim(Train)[1]))
+  
+  return(gsub("aux", "", names(coef(logit_forward))[-1]))
+}
+
+#Corremos los 11 modelos
+B3 <- MasUsadas(Metodo = "variables3",
+                 workers = 2)
+B4 <- MasUsadas(Metodo = "variables4",
+                 workers = 2)
+B5 <- MasUsadas(Metodo = "variables5",
+                 workers = 8)
+B6 <- MasUsadas(Metodo = "variables6",
+                 workers = 2)
+#Agrupamos los conteos por cada metodo
+Conteo <- rbind(B3, B4, B5, B6)
+#Sumamos y ordenamos
+Conteo = Conteo %>% aggregate(Freq ~ ., FUN = sum) %>% arrange(-Freq) %>% slice(1:10)
+```
+
+```{r Variables, echo=FALSE}
+#Formato de tabla
+kable(Conteo, booktabs = T,
+      align = "c", 
+      linesep = "",
+      caption = "10 Covariables Clínicas con mayor frecuencia en los ajustes simulados en los conjuntos Train",
+      format = "latex")
+```
+
+Para la determinación de las covariables con mayor poder predictivo, se guardaron las covariables utilizadas en cada uno de los entrenamientos de aquellos modelos que utilizaron alguna selección de variables (Modelos 3,4,5 y 6). Así, en la tabla \ref{tab:Variables}, se aprecia que las covariables más utilizadas y que por tanto poseen mayor poder predictivo son: "glucose", "mass" y "age", las cuales se corresponden con lo analizado en el apartado \@ref(Descr).
+
+## Regla final
+El modelo final con mayor poder predictivo es es el modelo 3, el cual consiste en una regresión logística sobre los Efectos Principales más Selección por Pasos mediante criterio BIC. No se realizó ningún tuneo sobre hiperparámetros ni se escalaron las covariables.
+```{r Final, echo=FALSE}
+#Modelo Nulo.
+  AjusteNulo <- glm(formula = diabetes ~ 1, 
+                    family =  binomial(link = "logit"), 
+                    data = DatosL)
+  
+  #Modelo Saturado.
+  AjusteSaturado <- glm(formula = diabetes ~., 
+                        family =  binomial(link = "logit"), 
+                        data = DatosL)
+  
+  #Aplicamos seleccion via step forward
+  logit_forward <- step(object = AjusteNulo,
+                        scope = list(lower = AjusteNulo, 
+                                     upper = AjusteSaturado),
+                        trace = FALSE, 
+                        direction = "forward", 
+                        k = log(dim(DatosL)[1]))
+Regla = coef(logit_forward)
+```
+Se presentan los coeficientes que determinan la regla final en la tabla \ref{tab:Final1}
+```{r Final1, echo=FALSE}
+kable(Regla, booktabs = T,
+      align = "c", 
+      linesep = "",
+      caption = "Coeficientes del modelo con mayor poder de predicción",
+      format = "latex")
+```
+
