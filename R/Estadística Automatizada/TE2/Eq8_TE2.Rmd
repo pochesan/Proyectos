@@ -1,0 +1,1584 @@
+---
+title: "Tarea Examen 2"
+author: "Alejandro Bonilla Alarcón & Angel Josué Mejía Nájera"
+date: "18-05-2023"
+output:
+  bookdown::pdf_document2:
+    citation_package: natbib
+    number_sections: yes
+    toc: yes
+    highlight: arrow
+    keep_tex: yes
+  pdf_document:
+    toc: yes
+subtitle: Versión B
+header-includes:
+- \usepackage[spanish]{babel}
+- \decimalpoint
+- \usepackage{enumitem}
+- \usepackage{caption}
+- \usepackage{amsmath}
+- \usepackage{nccmath}
+- \usepackage{amsthm}
+- \usepackage{bm}
+- \usepackage{float}
+- \usepackage{booktabs}
+- \usepackage{diagbox}
+- \usepackage{array}
+- \usepackage{graphicx}
+- \usepackage{wrapfig}
+- \usepackage{xcolor}
+- \usepackage{csquotes}
+- \theoremstyle{Definicion}
+- \newtheorem{Definition}{Definición}
+- \theoremstyle{Result}
+- \newtheorem{Result}{Resultado}
+linkcolor: blue
+---
+```{r setup, include=FALSE}
+
+#Limpieza de entorno
+rm(list = ls(all.names = TRUE))
+gc()
+#Fijamos decimales
+options(digits=4)
+
+knitr::opts_chunk$set(echo = FALSE,
+                      fig.align = "center",
+                      fig.pos = "H", 
+                      fig.dim = c(5,3))
+
+library(tidyverse)
+library(kableExtra)
+```
+
+\newpage
+
+# Ejercicio 1
+
+## Problema
+
+Sea $X_1, ..., X_n$ una muestra aleatoria de la distribución $Poisson(\theta)$. Es de interés estimar el parámetro $\tau(\theta) = e^{-\theta} = P(X = 0)$. Se puede verificar que $\hat{\tau(\theta)} = (\frac{n-1}{n})^{\sum_{i = 1}^{n} X_i}$ es el UMVUE de $\tau(\theta) = e^{-\theta}$. Para poder estimar el parámetro de interés se consideran el método de Monte Carlo y el método de Bootstrap.
+
+
+## Método Monte Carlo
+
+En general, con este método
+
+$$
+E(g(Z)) \approx \frac{\sum_{b=1}^{B} g(Z_b)}{B}
+$$
+donde $Z_1, ..., Z_B$ son números aleatorios de la distribución de la variable aleatoria Z.
+
+De esta forma, se generan B muestras aleatorias de tamaño n de una distribución $Poisson(\theta)$ y se calculan B estimaciones del parámetro de interés, $\hat{\tau}_1, ..., \hat{\tau}_B$.
+
+De manera específica, se supone que conocemos la distribución de las variables $X_1, ..., X_n$ y los paramétros para hacer el método Monte Carlo son $\theta = 2$, $n = 2$, $B = 10,000$.
+
+## Método Bootstrap
+
+Para este método se considera que se tiene una muestra de las variables $X_1, ..., X_n$, sobre la cual se realizó un remuestreo para poder estimar la distribución.
+
+De manera específica, se considera que se cuenta con una muestra $X_1, ..., X_{20}$ de una distribución $Poisson(2)$.
+
+A partir de esta muestra, se realizan 10,000 remuestreos con reemplazo y se calcula $\hat{\tau}$ para cada muestra.
+
+
+## Resultados
+
+A continuación se muestra el histograma de las estimaciones obtenidas con el método Monte Carlo y el método de Bootstrap, así como un cuadro para comprar los resultados de las aproximaciones de $E[\hat{\tau}]$ y $V(\hat{\tau})$ para cada método.
+
+
+```{r HistMC, fig.cap = "Histograma de las estimaciones con el método de Monte Carlo", fig.show = "hold", out.width="80%",out.hight="80%",fig.align='center'}
+
+# Definicion de parametros
+theta <- 2
+n <- 20
+B <- 10000
+
+#### a. Monto Carlo ####
+set.seed(123)
+
+# Realizamos B muestras de aleatorias de tamaño n de una distribucion Poisson(theta)
+sample_mc <- matrix(rpois(n*B, lambda = theta), ncol = B)
+
+# Estimamos tau para cada una de las B muestras aleatorias
+sample_mc_tau <- apply(sample_mc, 2, function(x, n) {((n-1)/n) ^ sum(x)}, n)
+
+# Estimamos E[tau_hat] y V(tau_hat)
+E_tau_hat_mc <- mean(sample_mc_tau)
+V_tau_hat_mc <- var(sample_mc_tau)
+
+# Realizamos un histograma de las B estimaciones
+hist(sample_mc_tau, breaks = 20, main = "Histograma con el método de Monte Carlo", xlab = "Valor de las estimaciones")
+abline(v = E_tau_hat_mc, col = "red")
+
+```
+
+
+```{r HistB, fig.cap = "Histograma de las estimaciones con el método de Bootstrap", fig.show = "hold", out.width="48%",out.hight="80%",fig.align='center'}
+
+#### b. Bootstrap ####
+# Tamaño de la muestra
+n_b <- 20
+
+# Muestra sobre la que vamos a realizar el bootstrap
+sample_S <- rpois(n_b, lambda = theta)
+
+# Realizamos B remuestreos
+sample_b <- replicate(B, sample(sample_S, n_b, replace = TRUE))
+
+# Estimamos tau para cada una de las B muestras aleatorias
+sample_b_tau <- apply(sample_b, 2, function(x, n) {((n-1)/n) ^ sum(x)}, n)
+
+# Estimamos E[tau_hat] y V(tau_hat)
+E_tau_hat_b <- mean(sample_b_tau)
+V_tau_hat_b <- var(sample_b_tau)
+
+# Realizamos un histograma de las B estimaciones
+hist(sample_b_tau, breaks = 20, main = "Histograma del método de Bootstrap", xlab = "Valor de las estimaciones")
+abline(v = E_tau_hat_b, col = "red")
+
+```
+
+
+```{r tablaMCB}
+
+# Vector de datos
+media.est <- c(E_tau_hat_mc, E_tau_hat_b)
+
+var.est <- c(V_tau_hat_mc, V_tau_hat_b)
+
+# Crear el dataframe con los títulos y los valores
+dfMC <- data.frame("Media" = media.est, "Varianza" = var.est)
+rownames(dfMC) <- c("Monte Carlo", "Bootstrap")
+
+#Formato de tabla
+kable(dfMC, booktabs = T,
+      align = c("c", "c"), 
+      linesep = "",
+      caption = "Aproximación de las estadísticas de la distribución del parámetro con el método de Monte Carlo y Bootstrap") %>%
+  kable_styling(latex_options = "HOLD_position")
+
+```
+
+Con los parámetros conocidos se sabe que $\tau(\theta) = 0.13533$.
+
+A partir del Cuadro \@ref(tab:tablaMCB) observamos que el método Monte Carlo aproxima mejor a $\tau$, pero tambien es el método que arroja más variabilidad en las estimaciones. Sin embargo, el método Bootstrap también se acercó mucho al valor real de $\tau$ y cuenta con la ventaja de que no es necesario conocer la distribución de los datos para generar distintas muestras.
+
+```{r setup2, include=FALSE}
+
+#Limpiamos entorno
+rm(list = ls(all.names = TRUE))
+gc()
+
+## Datos
+library(mlbench)
+
+## Manejo y limpieza de datos
+library(dplyr)
+library(tidyr)
+library(forcats)
+library(broom)
+
+## Gráficas
+library(ggplot2)
+library(GGally)
+library(ggpubr)
+library(corrplot)
+library(RColorBrewer)
+
+## Selección de variables
+library(MASS)
+library(bestglm)
+library(glmnet)
+
+# Verificación de supuestos
+library(DHARMa)
+
+#Tablas bonitas y rmarkdown
+library(kableExtra)
+library(magick)
+
+#Datos corregidos del National Institute of 
+#Diabetes and Digestive and Kidney Diseases
+data(PimaIndiansDiabetes2)
+
+```
+
+```{r warn, include=FALSE} 
+#Eliminamos warnings
+knitr::opts_chunk$set(warning = FALSE, message = FALSE) 
+```
+
+\newpage
+
+# Ejercicio 2
+
+## Datos
+
+La base de datos $PimaIndiansDiabetes2$ del paquete $mlbench$ contiene información sobre $768$ pacientes por parte del National Institute of Diabetes and Digestive and Kidney Diseases, donde los datos insuales con valores 0 fueron corregidos para ser NAs. 
+El objetivo es realizar una selección óptima y con base en el criterio BIC, pues se desea obtener el menor número posible de variables independientes, de las 8 variables clínicas observadas. De tal forma que, ya sea adicional o como sustituto de la variable $glucose$, ayuden a mejorar la modelación de la probabilidad de presentar o no diabetes (var $diabetes$).
+
+Para esta selección, se tomó en consideración una selección a través del Mejor Subconjunto, métodos Stepwise y penalizaciones Lasso, probando diferentes ligas ($logit$, $probit$ y $cloglog$), así como tomando en cuenta Efectos Principales, Interacciones y tranformaciones cuadráticas de las variables.
+
+## Análisis Descriptivo
+
+\begin{table}[H]
+\centering
+\begin{tabular}{>{\flushleft\arraybackslash}m{3cm}>{\flushleft\arraybackslash}m{13cm}}
+\toprule
+\multicolumn{1}{l}{Variable}                &  \multicolumn{1}{l}{Descripción}                         
+                                 \\ \midrule
+\texttt{pregnant}               & Número de veces embarazada(Entero).           \\
+\texttt{glucose}                & Concentración de glucosa en plasma(prueba de tolerancia a la glucosa)(Entero). \\
+\texttt{pressure}               & Tensión arterial diastólica(mm Hg)(Entero). 
+        \\
+\texttt{triceps}                & Espesor del pliegue cutáneo del tríceps(mm)(Entero).
+        \\
+\texttt{insulin}                & Insulina sérica de 2 horas(mu U/ml)(Contínua).
+        \\   
+\texttt{mass}                   & Indice de masa corporal (peso en kg/(altura en m)$^2$)(Contínua).
+        \\
+\texttt{pedigree}               & Función pedigrí de la diabetes(Contínua).
+        \\
+\texttt{age}                    & Edad en años(Int). 
+        \\
+\textcolor{blue}{\texttt{diabetes}} & \textcolor{blue}{Variable binaria de dos niveles: (2 = pos = Paciente con Diabetes, 1 = neg = Paciente sin Diabetes)}. \\ \bottomrule
+\end{tabular}
+\caption{\label{tab:t1} Variables originales del DataFrame \texttt{PimaIndiansDiabetes2} y su notación dentro del modelo de RLM.}
+\end{table}
+
+```{r setup2NA, include=FALSE}
+#Guardamos Datos
+Datos = PimaIndiansDiabetes2
+#Borramos Database original del enviroment
+rm(PimaIndiansDiabetes2)
+#Resumen de variables
+str(Datos)#Detectamos NA's
+summary(Datos) #Todas las covariables son numericas
+
+#Preprocesamiento
+#Calculamos NA's
+sum(apply(t(!is.na(Datos)),2, function(x) all(x))) #Se conservan 392 observaciones
+length(na.omit(Datos)$pregnant) #Confirmamos
+#Eliminamos NA's
+DatosL = na.omit(Datos)
+#DatosL$diabetes <-factor(DatosL$diabetes,levels = c("0","1"),labels = c("No","Yes"))
+```
+Se comprobó la existencia de NAs en el DataFrame PimaIndiansDiabetes2, por lo que se consideró la eliminación de todas aquellas observaciones que poseyeran al menos una variable con registro NA, quedando en total 392 observaciones de las 768 originales.
+
+A partir de la Figura \@ref(fig:Boxplots) se observa que:
+```{=tex}
+\begin{itemize}
+  \item El número de no diabéticos observados es casi el doble que el de diabéticos.
+  \item Existen valores atípicos en el número de embarazos, llegando a presentar un paciente con 15 embarazos.
+  \item Las personas con mayor edad presentan diabetes, mientras que los más jovenes no.
+  \item Las personas que poseen diabetes concentran un mayor nivel de glucosa e insulina.
+\end{itemize}
+```
+
+```{r Boxplots, echo=FALSE, fig.cap = "(Izquierda) Gráfico de conteo para la variable diabetes. (Derecha) Conjunto de Boxplots por cada variable independiente y diferenciados según el color si el paciente tuvo diabetes o no.", fig.show="hold", out.width="45%",fig.align='center', strip.white=TRUE}
+#Gráfica de conteo de diabetes
+data.frame(table(DatosL$diabetes))  %>% 
+  rename("Diabetes" = "Var1",
+         "Frecuencia" = "Freq") %>%
+  ggplot(aes(Diabetes, Frecuencia, fill=Diabetes)) +
+  geom_bar(stat = 'identity', position = position_dodge()) +
+  theme(legend.position = "bottom")+
+  xlab("")+
+  geom_text(aes(label=Frecuencia), 
+            vjust=-0.5 , hjust=0.7, color="black", 
+            position = position_dodge(0.9),size=3) +
+  scale_fill_brewer(palette="Reds")
+
+
+variables <- colnames(DatosL)[-length(colnames(DatosL))]
+#Graficos de boxplot por cada covariable
+plots <- lapply(variables, function(var) {
+  ggplot(DatosL, aes_string(y = var, color = "diabetes")) +
+    geom_boxplot(size = 1.5)
+})
+
+#Ajustamos boxplots en un solo arrange
+pdf(NULL)
+res <- ggarrange(plotlist = plots, nrow = 2, ncol = 4, common.legend = TRUE) 
+dev.off()
+res
+```
+
+```{r Calorplot,results = 'hide',echo=FALSE, fig.cap = "Gráfico de calor y correlaciones de las 9 covariables clínicas.", fig.align='center', fig.show="hold", out.width="70%"}
+covariables = subset(DatosL, select = -c(diabetes))
+covariables %>% cor(method = "pearson") %>%  
+  round(digits = 3) %>% 
+  corrplot(method = "ellipse",
+           type = "upper",
+           order="hclust",
+           mar=c(0,0,2,0), 
+           diag = FALSE,
+           addCoef.col = "black",
+           number.cex = 0.75,
+           tl.cex = 0.75,
+  )
+```
+
+De la Figura \@ref(fig:Calorplot), se observan algunas correlaciones significativas, principalmente entre las variables $pregnant$ y $age$, $triceps$ y $mass$ e $insulina$ con $glucosa$. Y, en general, se observan correlaciones positivas. Dado que no existen correlaciones mayores a 0.9, se espera no haya problemas de colinealidad.
+
+### Estadísticas básicas
+
+En la tabla \ref{tab:Cuadrao} se aprecia que, en promedio, los pacientes con diabetes presentan mayores valores para todas las covariables que aquellos pacientes que no poseen diabetes. Además, con base en la desviación estándar, se puede inferir que las observaciones de pacientes con diabetes son más dispersas.
+
+```{r Cuadrao, echo = FALSE}
+#Tabla comparativa de medias y desv. estandar [media(desv.est)]
+MeansData = aggregate(DatosL[,1:8], by = list(DatosL$diabetes), function(x) mean(x, na.rm = TRUE))
+SdData = aggregate(DatosL[,1:8], by = list(DatosL$diabetes), function(x) sd(x, na.rm = TRUE))
+MySdPos = paste(round(MeansData[2,2:9],2),"[",round(SdData[2,2:9],2),"]", sep = "")
+MySdNeg = paste(round(MeansData[1,2:9],2),"[",round(SdData[1,2:9],2),"]", sep = "")
+MySdf = data.frame(Positivo = MySdPos, Negativo = MySdNeg, Variables = colnames(DatosL)[-9])
+
+#Tabla Kable  
+kable(MySdf, booktabs = T, 
+      align = "c", 
+      linesep = "", 
+      caption = "Tabla comparativa de medias y Desv. Estándar para cada Covariable") %>%
+  add_header_above(c("Diabetes"= 2," "= 1)) %>% 
+  add_header_above(c("Mean(SD)" = 2," " = 1)) %>%
+  kable_styling(latex_options = "HOLD_position")
+```
+
+## Modelos Ajustados (Modelo binomial)
+```{r Ajuste, include = FALSE}
+#### i #### 
+#Seleccion de Variables solo Efectos Principales
+#Consideramos modelo logit
+
+#Acomodo de datos para bestglm
+Databest = DatosL %>% relocate(diabetes, .after = age)
+#Acomodo de datos para glmnet
+#Generamos matrix de disenio (solo efectos principales)
+DatanetX = model.matrix(diabetes ~., data = DatosL)
+XsInt = DatanetX[,-1]
+#Guardamos variable dependiente
+DataY = DatosL$diabetes
+
+#### a) Mejor subconjunto ####
+best.log = bestglm(Databest, IC = 'BIC', family = binomial('logit'), method = 'exhaustive')
+summary(best.log$BestModel) #Todas las covariables son significativas
+#Obtenemos BIC y coeficientes
+coef(best.log$BestModel)
+BIC(best.log$BestModel)
+#Listas para guardar mejores modelos y BIC
+BestModel = list(coef(best.log$BestModel))
+BestBIC = list(BIC(best.log$BestModel))
+
+#### b) StepWise #### 
+#Metrica BIC
+#Definimos modelo nulo
+NullDatos = glm(diabetes ~ 1, family = binomial('logit'), data = DatosL)
+
+#Definimos modelo completo
+FullDatos = glm(diabetes ~., family = binomial('logit'), data = DatosL)
+summary(FullDatos)
+
+#### Forward
+forward.log = step(object = NullDatos, scope = list(upper = FullDatos, lower = NullDatos), 
+                   trace = FALSE, direction = 'forward', k = log(dim(DatosL)[1]))
+#Guardamos modelo y BIC
+BestModel = append(BestModel, list(coef(forward.log)))
+BestBIC = append(BestBIC, BIC(forward.log))
+
+#### Backward
+backward.log = step(object =  FullDatos, scope = list(upper = FullDatos, lower = NullDatos), 
+                   trace = FALSE, direction = 'backward', k = log(dim(DatosL)[1]))
+#Guardamos modelo y BIC
+BestModel = append(BestModel, list(coef(backward.log)))
+BestBIC = append(BestBIC, BIC(backward.log))
+
+#### Both
+Both.log = step(object =  FullDatos, scope = list(upper = FullDatos, lower = NullDatos), 
+                   trace = FALSE, direction = 'both', k = log(dim(DatosL)[1]))
+#Guardamos modelo y BIC
+BestModel = append(BestModel, list(coef(Both.log)))
+BestBIC = append(BestBIC, BIC(Both.log))
+
+#En los 3 stepwise obtenemos el mismo modelo con todas las covariables significativas
+#### c) Lasso ####
+
+#Aplicamos penalizacion lasso con variables estandarizadas
+#usando solo efectos principales y liga logit
+laso.log = glmnet(x = XsInt, y = DataY, standardize = TRUE, family = binomial('logit'), nlambda = 200)
+#Observamos todos los modelos obtenidos y sus respectivas lambdas
+print(laso.log)
+coef(laso.log)
+
+#Funcion con ciclo for que filtra los coeficientes cero
+#dados por la penalizacion lasso y recalcula
+#los parametros beta por EMV para cada lambda
+LassBIC = function(LenL, Matrix, model, Y, liga){
+  #Listas vacias
+  ListMod = list(NA)
+  ListBIC = list(NA)
+  #Ciclo for de filtrado y ajuste de modelo
+  for (i in 1:LenL) {
+    aux =  Matrix[, coef(model)[, i] != 0]
+    auxMod = glm(formula = Y ~ aux - 1, 
+                 family = binomial(liga))
+    ListMod[[i]] = auxMod
+    ListBIC[[i]] = BIC(auxMod)
+  }
+  return(list(ListMod,ListBIC))
+}
+
+#Guardamos numero de lambdas probadas
+lenlamb = length(laso.log$lambda)
+
+#Aplicamos funcion
+Lasso = LassBIC(lenlamb, DatanetX, laso.log, DataY, 'logit')
+#Guardamos modelo con minimo BIC
+LassMinBIC = which.min(unlist(Lasso[[2]]))
+LassMinMod = Lasso[[1]][[LassMinBIC]]
+
+#Guardamos modelo y BIC
+BestModel = append(BestModel, list(coef(LassMinMod)))
+BestBIC = append(BestBIC, BIC(LassMinMod))
+
+#### ii ####
+#Seleccion de Variables Efectos Principales más interacciones y cuadrados
+#Consideramos modelo logit
+
+#Acomodo de datos para glmnet
+
+#Terminos de la matrix (agregamos interacciones y cuadrados)
+form <- formula(paste('diabetes ~ . ^2 + ', 
+                      paste(paste0('I(', colnames(DatosL)[-9], '^2)'), collapse = " + ")))
+
+#Generamos matrix de disenio 
+DatanetXEP = model.matrix(form, data = DatosL)
+#Quitamos interceptor
+XsIntEP = DatanetXEP[,-1]
+#Comprobamos que no exista colinealidad con interceptor
+#Es decir, que no sea una covariable con puros ceros
+summary(XsIntEP) #No hay problemas
+
+#Guardamos variable dependiente
+DataYEP = DatosL$diabetes
+
+#### a) StepWise #### 
+#Metrica BIC
+#Definimos modelo nulo
+NullDatosEP = glm(diabetes ~ 1, family = binomial('logit'), data = DatosL)
+#Definimos modelo completo con interacciones y terminos cuadrados
+FullDatosEP = glm(form, family = binomial('logit'), data = DatosL)
+#### Forward
+forward.logEP = step(object = NullDatosEP, scope = list(upper = FullDatosEP, lower = NullDatosEP), 
+                   trace = FALSE, direction = 'forward', k = log(dim(DatosL)[1]))
+#Guardamos modelo y BIC
+BestModel = append(BestModel, list(coef(forward.logEP)))
+BestBIC = append(BestBIC, BIC(forward.logEP))
+
+#### Backward
+backward.logEP = step(object =  FullDatosEP, scope = list(upper = FullDatosEP, lower = NullDatosEP), 
+                    trace = FALSE, direction = 'backward', k = log(dim(DatosL)[1]))
+summary(backward.logEP) #Obtenemos una variable no significativa
+#Guardamos modelo y BIC
+BestModel = append(BestModel, list(coef(backward.logEP)))
+BestBIC = append(BestBIC, BIC(backward.logEP))
+
+#### Both
+Both.logEP = step(object =  FullDatosEP, scope = list(upper = FullDatosEP, lower = NullDatosEP), 
+                trace = FALSE, direction = 'both', k = log(dim(DatosL)[1]))
+summary(Both.logEP)#Mismo modelo que con backward
+#Guardamos modelo y BIC
+BestModel = append(BestModel, list(coef(Both.logEP)))
+BestBIC = append(BestBIC, BIC(Both.logEP))
+#El Modelo Forward presenta el modelo con minimo AIC
+
+#Modelo both sin variable insulina
+Both.logEP1 = glm(diabetes ~ glucose + mass + pedigree + age + I(age^2) + I(insulin*pedigree) + I(insulin*age), family = binomial('logit'), data = DatosL)
+#Menor BIC de los modelos comprobados
+BIC(Both.logEP1) 
+#Notamos que el modelo forward esta anidado en el modelo both sin insulina
+anova(Both.logEP1, forward.logEP, test="Chisq")
+#Se rechaza la hipotesis nula, es decir, el modelo mayor aporta variables significativas
+#al modelo, ademas de presentar menor BIC
+
+#Guardamos modelo y BIC
+BestModel = append(BestModel, list(coef(Both.logEP1)))
+BestBIC = append(BestBIC, BIC(Both.logEP1))
+
+#### b) Lasso ####
+#Aplicamos penalizacion lasso con variables estandarizadas
+#usando solo efectos principales y liga logit
+laso.logEP = glmnet(x = XsIntEP, y = DataYEP, standardize = TRUE, family = binomial('logit'), nlambda = 300)
+#Observamos todos los modelos obtenidos y sus respectivas lambdas
+print(laso.logEP) #287 lambdas probadas
+coef(laso.logEP)
+
+#Guardamos numero de lambdas probadas
+lenlambEP = length(laso.logEP$lambda)
+
+#Aplicamos funcion de filtrado Lasso
+LassoEP = LassBIC(lenlambEP, DatanetXEP, laso.logEP, DataYEP, 'logit')
+
+#Guardamos modelo con minimo BIC
+LassMinBICEP = which.min(unlist(LassoEP[[2]]))
+LassMinModEP = LassoEP[[1]][[LassMinBIC]]
+
+#Guardamos modelo y BIC
+BestModel = append(BestModel, list(coef(LassMinModEP)))
+BestBIC = append(BestBIC, BIC(LassMinModEP))
+
+#### iii ####
+#### A) ####
+#Seleccion de Variables usando distintas ligas
+#### liga probit ####
+##Mejor Subconjunto (i)
+best.pro = bestglm(Databest, IC = 'BIC', family = binomial('probit'), method = 'exhaustive')
+summary(best.pro$BestModel) #Todas las covariables son significativas
+#Listas para guardar mejores modelos y BIC
+BestModel = append(BestModel, list(coef(best.pro$BestModel)))
+BestBIC = append(BestBIC, BIC(best.pro$BestModel))
+
+##StepWise (i) #### Forward
+#Definimos modelo nulo
+NullDatospro = glm(diabetes ~ 1, family = binomial('probit'), data = DatosL)
+#Definimos modelo completo
+FullDatospro = glm(diabetes ~., family = binomial('probit'), data = DatosL)
+#Ajuste Modelo
+forward.pro = step(object = NullDatospro, scope = list(upper = FullDatospro, lower = NullDatospro), 
+                   trace = FALSE, direction = 'forward', k = log(dim(DatosL)[1]))
+#Guardamos modelo y BIC
+BestModel = append(BestModel, list(coef(forward.pro)))
+BestBIC = append(BestBIC, BIC(forward.pro))
+
+##StepWise (ii) #### Forward
+#Definimos modelo nulo
+NullDatosproEP = glm(diabetes ~ 1, family = binomial('probit'), data = DatosL)
+#Definimos modelo completo con interacciones y terminos cuadrados
+FullDatosproEP = glm(form, family = binomial('probit'), data = DatosL)
+#Ajuste Modelo
+forward.proEP = step(object = NullDatosproEP, scope = list(upper = FullDatosproEP, lower = NullDatosproEP), 
+                      trace = FALSE, direction = 'forward', k = log(dim(DatosL)[1]))
+#Guardamos modelo y BIC
+BestModel = append(BestModel, list(coef(forward.proEP)))
+BestBIC = append(BestBIC, BIC(forward.proEP))
+
+##Lasso (i)
+laso.probi = glmnet(x = XsInt, y = DataY, standardize = TRUE, family = binomial('probit'), nlambda = 100)
+#Observamos todos los modelos obtenidos y sus respectivas lambdas
+print(laso.probi) #62 lambdas probadas
+coef(laso.probi)
+#Guardamos numero de lambdas probadas
+lenlambprob = length(laso.probi$lambda)
+#Aplicamos funcion de filtrado Lasso
+Lassopro = LassBIC(lenlambprob, DatanetX, laso.probi, DataY, 'probit')
+#Guardamos modelo con minimo BIC
+LassMinBICpro = which.min(unlist(Lassopro[[2]]))
+LassMinModpro = Lassopro[[1]][[LassMinBICpro]]
+
+#Guardamos modelo y BIC
+BestModel = append(BestModel, list(coef(LassMinModpro)))
+BestBIC = append(BestBIC, BIC(LassMinModpro))
+
+##Lasso (ii)
+laso.probiEP = glmnet(x = XsIntEP, y = DataYEP, standardize = TRUE, family = binomial('probit'), nlambda = 300)
+#Observamos todos los modelos obtenidos y sus respectivas lambdas
+print(laso.probiEP) #284 lambdas probadas
+coef(laso.probiEP)
+#Guardamos numero de lambdas probadas
+lenlambprobEP = length(laso.probiEP$lambda)
+#Aplicamos funcion de filtrado Lasso
+LassoproEP = LassBIC(lenlambprobEP, DatanetXEP, laso.probiEP, DataYEP, 'probit')
+#Guardamos modelo con minimo BIC
+LassMinBICproEP = which.min(unlist(LassoproEP[[2]]))
+LassMinModproEP = LassoproEP[[1]][[LassMinBICproEP]]
+
+#Guardamos modelo y BIC
+BestModel = append(BestModel, list(coef(LassMinModproEP)))
+BestBIC = append(BestBIC, BIC(LassMinModproEP))
+#### liga cloglog ####
+##Mejor Subconjunto (i)
+best.clog = bestglm(Databest, IC = 'BIC', family = binomial('cloglog'), method = 'exhaustive')
+summary(best.clog$BestModel) #Todas las covariables son significativas
+#Listas para guardar mejores modelos y BIC
+BestModel = append(BestModel, list(coef(best.clog$BestModel)))
+BestBIC = append(BestBIC, BIC(best.clog$BestModel))
+
+##StepWise (i) #### Forward
+#Definimos modelo nulo
+NullDatosclog = glm(diabetes ~ 1, family = binomial('cloglog'), data = DatosL)
+#Definimos modelo completo
+FullDatosclog = glm(diabetes ~., family = binomial('cloglog'), data = DatosL)
+#Ajuste Modelo
+forward.clog = step(object = NullDatosclog, scope = list(upper = FullDatosclog, lower = NullDatosclog), 
+                   trace = FALSE, direction = 'forward', k = log(dim(DatosL)[1]))
+#Guardamos modelo y BIC
+BestModel = append(BestModel, list(coef(forward.clog)))
+BestBIC = append(BestBIC, BIC(forward.clog))
+
+##StepWise (ii) #### Forward
+#Definimos modelo nulo
+NullDatosclogEP = glm(diabetes ~ 1, family = binomial('cloglog'), data = DatosL)
+#Definimos modelo completo con interacciones y terminos cuadrados
+FullDatosclogEP = glm(form, family = binomial('cloglog'), data = DatosL)
+#Ajuste Modelo
+forward.clogEP = step(object = NullDatosclogEP, scope = list(upper = FullDatosclogEP, lower = NullDatosclogEP), 
+                     trace = FALSE, direction = 'forward', k = log(dim(DatosL)[1]))
+#Guardamos modelo y BIC
+BestModel = append(BestModel, list(coef(forward.clogEP)))
+BestBIC = append(BestBIC, BIC(forward.clogEP))
+
+##Lasso (i)
+laso.clog = glmnet(x = XsInt, y = DataY, standardize = TRUE, family = binomial('cloglog'), nlambda = 100)
+#Observamos todos los modelos obtenidos y sus respectivas lambdas
+print(laso.clog) #58 lambdas probadas
+coef(laso.clog)
+#Guardamos numero de lambdas probadas
+lenlambclog = length(laso.clog$lambda)
+#Aplicamos funcion de filtrado Lasso
+Lassoclog = LassBIC(lenlambclog, DatanetX, laso.clog, DataY, 'cloglog')
+#Guardamos modelo con minimo BIC
+LassMinBICclog= which.min(unlist(Lassoclog[[2]]))
+LassMinModclog = Lassoclog[[1]][[LassMinBICclog]]
+
+#Guardamos modelo y BIC
+BestModel = append(BestModel, list(coef(LassMinModclog)))
+BestBIC = append(BestBIC, BIC(LassMinModclog))
+
+##Lasso (ii)
+laso.clogEP = glmnet(x = XsIntEP, y = DataYEP, standardize = TRUE, family = binomial('cloglog'), nlambda = 300)
+#Observamos todos los modelos obtenidos y sus respectivas lambdas
+print(laso.clogEP) #284 lambdas probadas
+coef(laso.clogEP)
+#Guardamos numero de lambdas probadas
+lenlambclogEP = length(laso.clogEP$lambda)
+#Aplicamos funcion de filtrado Lasso
+LassoclogEP = LassBIC(lenlambclogEP, DatanetXEP, laso.clogEP, DataYEP, 'cloglog')
+#Guardamos modelo con minimo BIC
+LassMinBICclogEP = which.min(unlist(LassoclogEP[[2]]))
+LassMinModclogEP = LassoclogEP[[1]][[LassMinBICclogEP]]
+
+#Guardamos modelo y BIC
+BestModel = append(BestModel, list(coef(LassMinModclogEP)))
+BestBIC = append(BestBIC, BIC(LassMinModclogEP))
+
+### B) Procesamiento log()
+#### Preprocesamiento ####
+summary(DatosL) #Observamos ningún cero salvo en la variable pregnant
+#Transformamos los datos, dado que la variable pregnant cuenta con ceros
+#agregamos 1 para no tener -inf y a su vez no sesgar tanto la distribucion
+#de los datos y su correlacion con las demas covariables, sobre todo con 
+#los ceros (conforme x->0, ln(x) -> -inf)
+DatosLog <- DatosL %>%
+  mutate(pregnant = log(pregnant + 1), across(-c(pregnant,diabetes), log))
+summary(DatosLog)
+
+#Variable para bestglm
+Databestlog = DatosLog
+#Acomodo de datos para glmnet
+#Generamos matrix de disenio (solo efectos principales)
+DatanetXlog = model.matrix(diabetes ~., data = DatosLog)
+XsIntlog = DatanetXlog[,-1]
+#Guardamos variable dependiente
+DataYlog = DatosLog$diabetes
+
+#Terminos de la matrix (agregamos interacciones y cuadrados)
+form.log <- formula(paste('diabetes ~ . ^2 + ', 
+                          paste(paste0('I(', colnames(DatosLog)[-9], '^2)'), collapse = " + ")))
+#Generamos matrix de disenio 
+DatanetX.logEP = model.matrix(form.log, data = DatosLog)
+#Quitamos interceptor
+XsInt.logEP= DatanetX.logEP[,-1]
+#Comprobamos que no exista colinealidad con interceptor
+#Es decir, que no sea una covariable con puros ceros
+summary(XsInt.logEP) #No hay problemas
+
+#Guardamos variable dependiente
+DataY.logEP = DatosL$diabetes
+
+##### Seleccion de Variables con liga logit (Efectos Principales) ####
+
+##Mejor subconjunto##
+best.log.log = bestglm(Databestlog, IC = 'BIC', family = binomial('logit'), method = 'exhaustive')
+summary(best.log.log$BestModel) #Todas las covariables son significativas
+#Listas para guardar mejores modelos y BIC
+BestModel = append(BestModel, list(coef(best.log.log$BestModel)))
+BestBIC = append(BestBIC, BIC(best.log.log$BestModel))
+
+##StepWise Forward-BIC## 
+#Definimos modelo nulo
+NullDatos.log = glm(diabetes ~ 1, family = binomial('logit'), data = DatosLog)
+#Definimos modelo completo
+FullDatos.log = glm(diabetes ~., family = binomial('logit'), data = DatosLog)
+##Ajustamos modelo stepwise
+forward.log.log = step(object = NullDatos.log, scope = list(upper = FullDatos.log, lower = NullDatos.log), 
+                   trace = FALSE, direction = 'forward', k = log(dim(DatosLog)[1]))
+#Guardamos modelo y BIC
+BestModel = append(BestModel, list(coef(forward.log.log)))
+BestBIC = append(BestBIC, BIC(forward.log.log))
+
+##Penalizacion Lasso con variables estandarizadas##
+##usando solo efectos principales y liga logit##
+laso.log.log = glmnet(x = XsIntlog, y = DataYlog, standardize = TRUE, family = binomial('logit'), nlambda = 200)
+
+#Observamos todos los modelos obtenidos y sus respectivas lambdas
+print(laso.log.log) #111 lambdas probadas
+coef(laso.log.log)
+
+#Guardamos numero de lambdas probadas
+lenlamb.log = length(laso.log.log$lambda)
+
+#Aplicamos funcion de filtrado Lasso
+Lasso.log = LassBIC(lenlamb.log, DatanetXlog, laso.log.log, DataYlog, 'logit')
+
+#Guardamos modelo con minimo BIC
+LassMinBIC.log = which.min(unlist(Lasso.log[[2]]))
+LassMinMod.log = Lasso.log[[1]][[LassMinBIC.log]]
+
+#Guardamos modelo y BIC
+BestModel = append(BestModel, list(coef(LassMinMod.log)))
+BestBIC = append(BestBIC, BIC(LassMinMod.log))
+
+##### Seleccion de Variables con liga logit (Efectos Principales, interacciones y ^2) ####
+##StepWise Forward-BIC## 
+#Definimos modelo nulo
+NullDatos.logEP = glm(diabetes ~ 1, family = binomial('logit'), data = DatosLog)
+#Definimos modelo completo con interacciones y terminos cuadrados
+FullDatos.logEP = glm(form.log, family = binomial('logit'), data = DatosLog)
+#### Ajuste StepWise Forward
+forward.log.logEP = step(object = NullDatos.logEP, scope = list(upper = FullDatos.logEP, lower = NullDatos.logEP), 
+                     trace = FALSE, direction = 'forward', k = log(dim(DatosLog)[1]))
+#Guardamos modelo y BIC
+BestModel = append(BestModel, list(coef(forward.log.logEP)))
+BestBIC = append(BestBIC, BIC(forward.log.logEP))
+
+##Penalizacion lasso con variables estandarizadas##
+##usando efectos principales, interacciones, ^2 y liga logit##
+laso.log.logEP = glmnet(x = XsInt.logEP, y = DataY.logEP, standardize = TRUE, family = binomial('logit'), nlambda = 400)
+
+#Guardamos numero de lambdas probadas
+lenlamb.logEP = length(laso.log.logEP$lambda)
+
+#Aplicamos funcion de filtrado Lasso
+Lasso.logEP = LassBIC(lenlamb.logEP, DatanetX.logEP, laso.log.logEP, DataY.logEP, 'logit')
+
+#Guardamos modelo con minimo BIC
+LassMinBIC.logEP = which.min(unlist(Lasso.logEP[[2]]))
+LassMinMod.logEP = Lasso.logEP[[1]][[LassMinBIC.logEP]]
+
+#Guardamos modelo y BIC
+BestModel = append(BestModel, list(coef(LassMinMod.logEP)))
+BestBIC = append(BestBIC, BIC(LassMinMod.logEP))
+
+#### iv ####
+#Modelo reducido del modelo 25
+Bestlasso = glm(diabetes~ pedigree + I(glucose*mass) + I(glucose*age), family = binomial('logit'), data = DatosLog)
+summary(LassMinMod.logEP)
+#Con base en el summary, podemos determinar que la variable glucose^2 no aporta
+#informacion relevante a la modelacion de la probabilidad dado que las 
+#demas variables estan presentes en la misma
+#Entonces, como no hay evidencia de que B2!=0, podemos ajustar un
+#nuevo modelo reducido bajo dicha consideracion.
+#Guardamos modelo y BIC
+BestModel = append(BestModel, list(coef(Bestlasso)))
+BestBIC = append(BestBIC, BIC(Bestlasso))
+
+#Guardamos si cumplio supuestos y tipo de liga
+Supuesto <- ifelse(seq_along(BestModel) %in% c(19, 20), "No Cumple", "Cumple")
+Liga = c('logit','logit','logit','logit','logit','logit','logit','logit','logit','logit','probit',
+           'probit','probit','probit','probit','cloglog','cloglog','cloglog','cloglog','cloglog',
+           'logit','logit','logit','logit','logit','logit')
+Ajuste = c('Bestglm','Forward','Backward','Both','Lasso','Forward','Backward','Both','Lasso','Both_Reducción','Bestglm',
+                  'Forward','Lasso','Forward','Lasso','Bestglm','Forward','Lasso','Forward','Lasso',
+                  'log_Bestglm','log_Forward','log_Lasso','log_Forward','log_Lasso','Log_Lasso_Reducción')
+#Guardamos en una lista de listas todos los datos
+BestModelCom <- Map(c, BestModel, Supuesto, Liga, Ajuste)
+
+#Ordenamos por BIC la lista de mejores modelos
+BestBIC[order(unlist(BestBIC))]
+BestM = BestModel[order(unlist(BestBIC))]
+#Con info completa
+BestM1 = BestModelCom[order(unlist(BestBIC))]
+
+#Creamos tabla con datos
+#26 mejores modelos
+#Guardamos modelos
+TablaBest = data.frame(Modelo = sapply(sapply(BestM, names), function(x) paste(x[-1], collapse = ", ")))
+#Eliminamos palabra aux de las variables
+TablaBest$Modelo = gsub("aux", "", TablaBest$Modelo)
+#Agregamos columnas
+TablaBest = TablaBest %>% mutate(Ajuste = sapply(BestM1, function(x) c(x[length(x)])),
+                     Liga = sapply(BestM1, function(x) c(x[length(x) - 1])),
+                     Supuestos = sapply(BestM1, function(x) x[length(x) - 2]),
+                     BIC = unlist(BestBIC[order(unlist(BestBIC))])
+                     )
+
+```
+
+En la tabla \ref{tab:Tablajuste} se consideró lo siguiente:
+
+```{=tex}
+\begin{itemize}
+\itemsep0em 
+  \item Las estimaciones de los coeficientes Betas se realizó a través de Máxima-Versimilitud.
+  \item Dado que el DataFrame solo posee covariables contínuas o enteras, solo se consideró usar el método de penalización Lasso simple en su configuración relax.
+  \item En las estimaciones de los coeficientes a través de penalización Lasso, se estandarizaron las variables (media 0, varianza 1).
+  \item El BIC se ajustó para ser comparable en todos los modelos.
+  \item El cumplimiento de los supuestos se verificó visualmente a través de los residuales Dharma.
+   \item Los modelos con prefijo $log$ son aquellos que incluyeron transformación logaritmo sobre las covariables.
+  \item Algunos modelos poseen variables no significativas, sin embargo, se optó por no eliminar dichas variables pues era usual que fuese la variable glucosa o insulina la variable no significativa, lo cual no va en concordancia con lo que dicta la teoría que se tiene sobre la relación entre diabetes y dichas variables.
+\end{itemize} 
+```
+```{r Tablajuste, echo=FALSE}
+#Formato de tabla
+kable(TablaBest, booktabs = T,
+      align = "c", 
+      linesep = "",
+      caption = "Comparación de Modelos seleccionados y ordenados con base en el BIC. Tomando en cuenta distintas ligas, interacciones y/o términos cuadráticos de las 8 covariables",
+      format = "latex") %>% kable_styling(font_size = 7)
+```
+
+Por otro lado, en la tabla \ref{tab:Tablajuste} se observa lo siguiente:
+```{=tex}
+\begin{itemize}
+\itemsep0em 
+  \item Las covariables que más se presenten son, en orden de importancia, son:
+  "glucose", "mass", "age" y "pedigree". Es decir, aparte de la glucosa, para modelar la probabilidad de diabetes, es de importancia considerar el IMC, la edad y la probabilidad de diabetes según los antecedentes familiares (pedigree).
+  \item La covariable "insuline" no se incluye con frecuencia en los modelos ajustados, lo cual puede atribuirse a la fuerte correlación que existe entre esta variable y "glucose", así como al posible efecto explicativo mayor que tiene esta última.
+  \item Es notable la reducción sobre el BIC que tienen los modelos que incluyen interacciones y términos cuadráticos, siendo que los 3 mejores modelos incluyen estos efectos adicionales.
+  \item Los modelos con liga logit tuvieron el mejor desempeño, luego los modelos con liga probit y finalmente, con liga cloglog, quienes inclusive tuvieron problemas a la hora de cumplir los supuestos de uniformidad (Dharma).
+  \item Los modelos con transformación logaritmo tuvieron mejor desempeño en cuanto al BIC.
+  \item Se puede concluir que usar interacciones, términos cuadráticos y un preprocesamiento a los datos, mejoró notablemente el desempeño del modelado, según la métrica BIC.
+\end{itemize} 
+```
+
+Finalmente, nótese que el mejor modelo resultó de una reducción manual del modelo obtenido a través de penalización Lasso, tomando en cuenta interacciones y usando transformación logaritmo y liga logit. Dicho modelo posee solo 3 variables, de las cuales 2 resultan ser interacciones entre la variable $glucose$ con las variables $mass$ y $age$.
+
+Con base en los coeficientes presentados en la tabla \ref{tab:TablaBest}, y bajo la consideración de que la función liga es creciente, podemos interpretar que, a mayor edad y/o mayor concentración de glucosa y/o mayor IMC, así como mayor pedigree, podriamos espererar un aumento en la probabilidad de que el paciente presente diabetes.
+
+```{r TablaBest, echo=FALSE}
+#Formato de tabla
+kable(BestModel[[26]], booktabs = T,
+      align = "c", 
+      linesep = "",
+      caption = "Coeficientes del mejor modelo",
+      format = "latex")
+```
+
+```{r Residuals,results = 'hide',echo=FALSE, fig.cap = "Verificación de supuestos a través de residuales Dharma.", fig.align='center', fig.show="hold", out.width="20%"}
+plot(simulateResiduals(Bestlasso)) 
+```
+
+```{r setup3, include=FALSE}
+
+#Fijamos decimales
+options(digits=4)
+
+knitr::opts_chunk$set(echo = FALSE,
+                      fig.align = "center",
+                      fig.pos = "H", 
+                      fig.dim = c(5,3))
+
+
+#Limpiamos entorno
+rm(list = ls(all.names = TRUE))
+gc()
+
+## Manejo y limpieza de datos
+library(dplyr)
+library(tidyr)
+library(tidyverse)
+library(tibble)
+
+## GrÃ¡ficas
+library(ggplot2)
+library(GGally)
+library(ggpubr)
+library(corrplot)
+library(RColorBrewer)
+
+#Componentes Principales y Conglomerados
+library(factoextra)
+library(psych)
+
+
+```
+
+\newpage
+
+# Ejercicio 3
+
+## Datos
+
+La base de datos del archivo Dat3Ex.csv contiene los datos de una encuesta que intenta analizar la personalidad de un grupo de 228 alumnos de licenciatura de una universidad de Estados Unidos. Las respuestas van del 1 al 5 donde:
+
+```{=tex}
+\begin{itemize}
+\itemsep0em 
+  \item 1-Disagree strongly
+  \item 2-Disagree a little
+  \item 3-Neither agree nor disagree
+  \item 4-Agree a little
+  \item 5-Agree strongly
+\end{itemize} 
+```
+
+y sólo se consideraran las siguientes variables:
+
+```{=tex}
+\begin{itemize}
+\itemsep0em 
+  \item V1-Is talkative,                    V2-Tends to find fault with others
+  \item V4-Is depressed, blue,              V6-Is reserved
+  \item V9-Is relaxed,handles stress well,  V12-Starts quarrels with others
+  \item V14-Can be tense                    V16-Generates a lot of enthusiasm
+  \item V17-Has a forgiving nature          V26-Has an assertive personality
+  \item V27-Can be cold and aloof           V29-Can be moody
+  \item V31-Is considerate and kind to almost everyone V34-Remains calm in tense situations
+  \item V37-Is sometimes rude to others
+\end{itemize} 
+```
+
+```{r calculos31, include=FALSE}
+# Cargamos los datos
+#Estos datos corresponden a una encuesta que intenta analizar
+#la personalidad de un grupo de 228 alumnos de licenciatura de 
+#una universidad de Estados Unidos.
+Datos <- read.csv("Dat3Ex.csv")[c("V1", "V2", "V4", "V6", "V9", "V12", "V14", 
+                                  "V16", "V17", "V26", "V27", "V29", "V31", "V34", "V37")]
+summary(Datos) #Las escalas de los datos son iguales
+str(Datos) #Asumimos primero que las variables son continuas
+#Observamos que el dataset contiene
+#228 observaciones, 15 variables 
+#independientes "continuas"
+
+#Funcion para transformar a factor (no jala el apply ni sapply)
+transformar_a_factor <- function(df) {
+  for (col in names(df)) {
+    df[[col]] <- as.factor(df[[col]])
+  }
+  return(df)
+}
+DatosFac <- transformar_a_factor(Datos)
+str(DatosFac)
+
+```
+
+## Análisis de datos
+
+A través de la gráfica de densidades \@ref(fig:analisis), es posible notar una mayor ponderancia en contestar la opcion 4 (ligeramente de acuerdo) sobre todo en las preguntas de naturaleza positiva salvo algunas negativas como V29 y V14, donde hay mayor preponderancia en contestar la opción 1 es con preguntas de índole negativa.
+
+```{r analisis, fig.cap = "", fig.show = "hold", out.width="80%",out.hight="80%",fig.align='center'}
+
+#Graficas
+#Relacion general entre las variables
+#Aplicamos pivot para expandir a lo largo
+Datos_long = Datos %>%           
+  pivot_longer(colnames(Datos)) %>% 
+  as.data.frame()
+
+ggplot(Datos_long, aes(x = value)) +
+  geom_density() + 
+  facet_wrap(~ name, scales = "free")
+
+```
+
+
+Analizando el correlograma de calor \@ref(fig:correlaciones2),se observan algunas correlaciones significativas, por ejemplo, la correlacion positiva más fuerte la presenta la pregunta V9 con la pregunta V34 (0.63), lo que se podría interpretar como que hay cierto sesgo a que, si la persona está de acuerdo con ser una persona relajada tiende a ser calmada en situaciones tensas. Además, sólo existe una correlacion negativa <= -0.5, dada entre las preguntas V9 y V14, la cual se podría intepretar como que, si una persona está de acuerdo con ser relajada, tendrá cierta tendencia a no estar de acuerdo con ser una persona tensa.
+
+
+```{r correlaciones2, fig.cap = "", fig.show = "hold", out.width="80%",out.hight="80%",fig.align='center'}
+
+#Analizamos correlaciones con grafico de calor
+#Usamos el coeficiente de correlacion de Spearman(con rangos)
+#para una mayor significancia de las correlaciones
+Datos %>% cor(method = "spearman") %>% 
+  round(digits = 3) %>% 
+  corrplot(method = "ellipse",
+           type = "upper",
+           order="hclust",
+           mar=c(0,0,2,0), 
+           diag = FALSE,
+           addCoef.col = "black",
+           number.cex = 0.75,
+           tl.cex = 0.75,
+           )
+```
+
+```{r TablaMetric, echo=FALSE}
+# Definir función para generar la tabla de conteo
+generarTablaConteo <- function(data, variable) {
+  conteo <- data %>%
+    pull(variable) %>%
+    table() %>%
+    as.data.frame() %>%
+    rename(Orden = ".", Frecuencia = Freq)
+  
+  tabla_conteo <- tibble::tibble(Pregunta = variable, conteo)
+  
+  return(tabla_conteo)
+}
+
+# Generar tabla de conteo y moda para cada variable segun la categoria ordenada
+tabla_final <- map_df(names(Datos), ~generarTablaConteo(Datos, .x))
+reorganizado <- tabla_final %>%
+  group_by(Pregunta) %>%
+  mutate(Moda = Orden[which.max(Frecuencia)]) %>%
+  spread(Orden, Frecuencia)
+
+#Formato de tabla
+kable(reorganizado, booktabs = T,
+      align = "c", 
+      linesep = "",
+      caption = "Tabla de Frecuencias con Moda",
+      format = "latex")
+```
+
+Con base en los coeficientes presentados en la tabla \ref{tab:TablaMetric}, observamos una mayor preponderancia en contestar la opción 4, la cual se puede interpretar como que los estudiantes suelen estar ligeramente de acuerdo con las cosas.
+
+## Componentes principales
+
+Usando los datos originales y los datos transformados con la función logaritmo se obtienen los componentes principales. En las siguientes Figuras \@ref(fig:cp3) y \@ref(fig:cp3log) se pueden observar el desagregado de los componentes principales para ambos tipos de datos.
+
+```{r i, include=FALSE}
+
+#### i #### 
+#Componentes Principales (Escala original y logaritmica)
+
+##Original
+#Obtenemos componentes principales
+R.CP=prcomp(Datos, scale = FALSE)
+#Mas detalles de los componentes
+print(summary(R.CP), digits=3) #Se alcanza el 70% en el componente PC5 (comienza a converger la varianza explicada)
+
+#Grafico de varianza explicada
+fviz_screeplot(R.CP, addlabels = TRUE)
+
+```
+
+```{r cp3, fig.cap = "Componentes principales de los datos originales", fig.show = "hold", out.width="40%",out.hight="80%",fig.align='center'}
+
+#Grafico tipo biplot
+fviz_pca_var(R.CP, 
+             col.var = "contrib", 
+             axes = c(1,2)) + theme_bw()
+```
+
+``` {r calculos32, include  = FALSE}
+#Calculamos correlaciones
+cbind(R.CP$x[,1:8], scale(Datos, scale = FALSE)) %>% 
+  cor() %>% 
+  round(3) %>% 
+  data.frame() %>% 
+  dplyr::select(c("PC1", "PC2", "PC3", "PC4","PC5")) %>% 
+  slice(9:n()) %>% 
+  rownames_to_column(var = "Covariable") 
+
+#Contribuciones de las variables a cada dimension
+fviz_contrib(R.CP, choice = "var", axes = 1)
+fviz_contrib(R.CP, choice = "var", axes = 2)
+fviz_contrib(R.CP, choice = "var", axes = 3)
+fviz_contrib(R.CP, choice = "var", axes = 4)
+
+
+
+##Log
+#Obtenemos componentes principales (tra)
+R.CPlog=prcomp(log(Datos), scale = FALSE)
+#Mas detalles de los componentes  
+print(summary(R.CPlog), digits=3) #Se alcanza el 70% en el componente PC5 (comienza a converger la varianza explicada)
+
+#Grafico de varianza explicada
+fviz_screeplot(R.CPlog, addlabels = TRUE)
+```
+
+```{r cp3log, fig.cap = "Componentes principales de los datos transformados", fig.show = "hold", out.width="40%",out.hight="80%",fig.align='center'}
+
+#Grafico tipo biplot
+fviz_pca_var(R.CPlog, 
+             col.var = "contrib", 
+             axes = c(1,2)) + theme_bw()
+
+```
+
+
+``` {r calculo34, include = FALSE}
+
+#Contribuciones de las variables a cada dimension
+fviz_contrib(R.CPlog, choice = "var", axes = 1)
+fviz_contrib(R.CPlog, choice = "var", axes = 2)
+fviz_contrib(R.CPlog, choice = "var", axes = 3)
+fviz_contrib(R.CPlog, choice = "var", axes = 4)
+  
+#Calculamos correlaciones
+cbind(R.CPlog$x[,1:8], log(Datos)) %>% 
+  cor() %>% 
+  round(3) %>% 
+  data.frame() %>% 
+  dplyr::select(c("PC1", "PC2", "PC3", "PC4","PC5")) %>% 
+  slice(9:n()) %>% 
+  rownames_to_column(var = "Covariable")
+
+```
+
+
+## Análisis exploratorio
+
+Usando los datos originales y los datos transformados se obtiene el análisis exploratorio con 3 factores como se observa en las Figuras \@ref(fig:factores3) y \@ref(fig:factores3log).
+
+``` {r factores, include = FALSE}
+
+#### ii ####
+#Analisis Factorial Exploratorio
+
+#Escala Original
+#Determinamos posible numero de factores
+set.seed(1123)
+#La funcion falla usando fa= "fa" y metodo minres
+parallelmin <- fa.parallel(Datos, fa = "both", n.iter=100)#Recomienda usar 3 factores
+parallelml <- fa.parallel(Datos, fa="fa", n.iter=100, fm = 'ml')#Recomienda usar 3 factores
+
+#Calculamos factores
+R.EFA <- fa(r = Datos,
+                nfactors = 3,
+                rotate = "oblimin")
+```
+
+
+```{r factores3, fig.cap = "Diagrama usando tres factores con los datos originales", fig.show = "hold", out.width="50%",out.hight="80%",fig.align='center'}
+
+#Diagrama
+fa.diagram(R.EFA, cut = 0.5)
+
+```
+
+
+``` {r factoreslog, include = FALSE}
+
+#Escala log
+parallelmin.log <- fa.parallel(log(Datos), fa = "fa", n.iter=100)#Recomienda usar 3 factores
+parallelml.log <- fa.parallel(log(Datos), fa="fa", n.iter=100, fm = 'ml')#Recomienda usar 3 factores
+
+#Calculamos factores
+R.EFA.log <- fa(log(Datos),
+                nfactors = 3, 
+                rotate = "oblimin") 
+#Diagrama
+fa.diagram(R.EFA.log, cut = 0.5)
+#Interpretacion rapida
+print(R.EFA.log, cut = .5, digits=2, sort=TRUE)
+summary(R.EFA.log) #La prueba de hipotesis indica que quizas sean necesarios mas factores
+
+#Calculamos factores con 5 factores
+R.EFA.log5 <- fa(log(Datos),
+                nfactors = 5, 
+                rotate = "oblimin") 
+
+```
+
+
+```{r factores3log, fig.cap = "Diagrama usando tres factores con los datos transformados", fig.show = "hold", out.width="60%",out.hight="80%",fig.align='center'}
+
+#Diagrama
+fa.diagram(R.EFA.log5, cut = 0.5)
+
+```
+
+##Mejor candidato
+```{r Facpoly, include=FALSE}
+
+poly_cor = polychoric(Datos)
+rho = poly_cor$rho
+#X11()
+#parallelmin <- fa.parallel(rho, fa = "fa", n.iter=100)#Recomienda usar 3 factores
+#X11()
+#parallelml <- fa.parallel(rho, fa = "fa", n.iter=100, fm = 'ml')#Recomienda usar 3 factores 
+
+R.EFA.poly = fa(Datos, nfactor=3, cor="poly", rotate = "oblimin")
+R.EFA.poly$loadings #Explica 50% varianza
+
+```
+
+```{r factoresBest, fig.cap = "Diagrama usando tres factores con matrix de correlaciones preparada para datos ordinales", fig.show = "hold", out.width="50%",out.hight="80%",fig.align='center'}
+
+#Diagrama
+fa.diagram(R.EFA.poly, cut = 0.5)
+
+```
+Notamos que en el diagrama de factores \@ref(fig:factoresBest), los 3 factores se agrupan bien con todas las variables propuestas. De tal forma que se podría interpretar que:
+
+
+```{r setup4, include=FALSE}
+
+#Limpieza de entorno
+rm(list = ls(all.names = TRUE))
+gc()
+#Fijamos decimales
+options(digits=4)
+
+knitr::opts_chunk$set(echo = FALSE,
+                      fig.align = "center",
+                      fig.pos = "H", 
+                      fig.dim = c(5,3))
+
+# Cargamos las librerias
+library(tidyverse)
+library(kableExtra)
+library(GGally)
+library(tidyverse)
+library(NbClust)
+library(psych)
+library(factoextra)
+
+# Cargamos los datos y quitamos filas con NAs
+datos <- read.csv("Dat4ExB.csv") %>%
+  na.omit() %>%
+  dplyr::select(!X)
+
+# Hacemos una copia de los datos estandarizados con media 0 y varianza 1
+datosP <- scale(datos, scale = TRUE) %>% as.data.frame()
+```
+
+\newpage
+
+# Ejercicio 4
+
+## Datos
+
+La base de datos Dat4ExB.csv contiene los resultados de una encuesta realizada por la compañia Oddjob Airways con la intención de conocer las expectativas de sus clientes sobre ciertos aspectos del servicio de la compañia. Las respuestas van de 1 a 100, donde 100 es que la persona considera que ese aspecto es crucial en
+el servicio, mientras que 1 corresponde a que no lo es. La descripción de los aspectos que se consideran es:
+
+\begin{itemize}
+
+  \item e1 ". . . with Oddjob Airways you will arrive on time."
+  \item e2 ". . . the entire journey with Oddjob Airways will occur as        booked."
+  \item e5 ". . . Oddjob Airways provides you with a very pleasant travel     experience."
+  \item e8 ". . . Oddjob Airways offers a comfortable on-board experience."
+  \item e9 ". . . Oddjob Airways gives you a sense of safety."
+  \item e10 ". . . the condition of Oddjob Airways’s aircraft is              immaculate."
+  \item e16 ". . . Oddjob Airways offers you a variety of foods and           beverages that fits your personal needs."
+  \item e17 ". . . all of Oddjob Airways’s personnel are always hospitable    and welcoming."
+  \item e21 ". . . Oddjob Airways makes traveling uncomplicated."
+  \item e22 ". . . Oddjob Airways provides you with interesting on-board      entertainment, service, and information sources."
+  
+\end{itemize}
+
+
+El objetivo es analizar si se pueden identificar grupos de clientes que en un futuro se puedan usar para focalizar la publicidad de la empresa.
+
+
+## Estrategias consideradas
+
+Para poder identificar los datos se consideraron los métodos k-means y el de conglomerados jerárquicos aglomerativo aplicados a los datos en escala original y a los datos estandarizados. Asímismo, se aplicó el método de componentes principales para transformar las variables.
+
+Los datos se estandarizaron para que tuvieran media 0 y varianza 1.
+
+En el método k-means se consideró k = 2, tanto para los datos originales como para los datos estandarizados, ya que permitia una mejor interpretación y fue el indicado por el índice Silhouette.
+
+Para el método de conglomerados jerárquicos aglomerativos se provaron varias disimilaridades entre observaciones (Camberra y Euclidian) y entre clusters (complete y ward.D). De igual forma, se consideró k = 2 dado que proporcionaba una mejor interpretación al diferenciar bien los grupos, y fue el indicado por el índice Silhouette.
+
+Por último, se aplicó el método de componentes principales y se realizaron los mismos procedimientos descritos anteriormente.
+
+```{r Calculos, include=FALSE}
+
+
+#### i. k-means con datos en escala original y estandarizados ####
+set.seed(123)
+
+## Datos en escala original ##
+
+# Usando el indice silhouette, observamos el posible valor optimo de k: valor optimo k = 2
+figS <- fviz_nbclust(datos, FUNcluster = kmeans, method = c("silhouette"), k.max = 8, nstart = 20)
+figS
+figS$data
+
+# Realizamos el metodo kmeans con 2 clusters
+k.means <- kmeans(x = datos, centers = 2, nstart = 25)
+table(k.means$cluster)
+
+datosc2 <- datos
+datosc2$k2 <- factor(k.means$cluster)
+
+# Realizamos un grafico por cluster
+ggpairs(data = datosc2, title = "Datos", aes(colour = k2))
+
+# Obtenemos algunas estadisticas por cluster
+describeBy(datosc2 ~ k2, mat = TRUE)
+
+# Grafico de componentes principales
+pca <- principal(datos, nfactor = 2, rotate = "none",scores = TRUE)
+pca
+biplot(pca, group = datosc2$k2, pch = c(0,21)[datosc2$k2])
+
+
+## Datos estandarizados ##
+set.seed(123)
+
+# Usando el indice silhouette, observamos el posible valor optimo de k: valor optimo k = 2
+figS=fviz_nbclust(datosP, FUNcluster = kmeans, method = c("silhouette"), k.max = 8, nstart = 20)
+figS
+figS$dataP
+
+# Realizamos el metodo kmeans con 2 clusters
+k.meansP <- kmeans(x = datosP, centers = 2, nstart = 25)
+table(k.meansP$cluster)
+
+datosc2P <- datosP
+datosc2P$k2 <- factor(k.meansP$cluster)
+
+# Realizamos un grafico por cluster
+ggpairs(data = datosc2P, title = "Datos", aes(colour = k2))
+
+# Obtenemos algunas estadisticas por cluster
+describeBy(datosc2P ~ k2, mat = TRUE)
+
+# Grafico de componentes principales
+pcaP <- principal(datosP, nfactor = 2, rotate = "none", scores=TRUE)
+pcaP
+biplot(pcaP, group = datosc2P$k2, pch = c(0,21)[datosc2P$k2])
+
+
+
+#### ii. conglomerados jerarquicos con datos en escala original y estandarizados #### 
+set.seed(123)
+
+## Datos en escala original ##
+
+# Realizamos el método de conglomerados probando distintas
+# disimilitudes entre observaciones y clusters
+
+# Con ayuda del indice silhouette obtenemos un punto de partida
+# para considerar los distintos números de clusters
+
+# Camberra
+dis_datos <- dist(x = datos, method = "canberra")
+
+NbClust(diss = dis_datos, distance = NULL, min.nc = 2,
+                  max.nc = 5, method = "complete", index = "silhouette")$Best.nc
+
+NbClust(diss = dis_datos, distance = NULL, min.nc = 2,
+                  max.nc = 5, method = "ward.D", index = "silhouette")$Best.nc
+
+
+# Euclidian
+dis_datos2 <- dist(x = datos, method = "euclidian")
+
+NbClust(diss = dis_datos2, distance = NULL, min.nc = 2,
+        max.nc = 5, method = "complete", index = "silhouette")$Best.nc
+
+NbClust(diss = dis_datos2, distance = NULL, min.nc = 2,
+        max.nc = 5, method = "ward.D", index = "silhouette")$Best.nc
+
+
+
+# Camberra, complete
+clust.jer1 <- hclust(dis_datos, method = "complete")
+
+datosv1 = datos
+datosv1$c2 = cutree(clust.jer1, k = 3)
+
+pca <- principal(datos, nfactor = 2, rotate = "none", scores = TRUE)
+pca
+biplot(pca, group = datosv1$c2, pch = c(2, 5, 10)[datosv1$c2])
+
+
+# Camberra, ward.D
+clust.jer2 <- hclust(dis_datos, method="ward.D")
+
+datosv2 = datos
+datosv2$c2 = cutree(clust.jer2, k = 2)
+
+pca <- principal(datos, nfactor = 2, rotate = "none",scores=TRUE)
+pca
+biplot(pca, group = datosv2$c2, pch = c(0, 5)[datosv2$c2])
+
+
+# Euclidian, complete
+clust.jer3 <- hclust(dis_datos2, method="complete")
+
+datosv3 = datos
+datosv3$c2 = cutree(clust.jer3, k = 2)
+
+pca <- principal(datos, nfactor = 2, rotate = "none",scores=TRUE)
+pca
+biplot(pca, group = datosv3$c2, pch = c(0, 5)[datosv3$c2])
+
+
+# Euclidian, ward.D
+clust.jer4 <- hclust(dis_datos2, method="ward.D")
+
+datosv4 = datos
+datosv4$c2 = cutree(clust.jer4, k = 2)
+
+pca <- principal(datos, nfactor = 2, rotate = "none",scores=TRUE)
+pca
+biplot(pca, group = datosv4$c2, pch = c(0, 5)[datosv4$c2])
+
+
+## Datos estandarizados ##
+
+# Realizamos el método de conglomerados probando distintas
+# disimilitudes entre observaciones y clusters
+
+# Con ayuda del indice silhouette obtenemos un punto de partida
+# para considerar los distintos números de clusters
+
+# Camberra
+dis_datosP <- dist(x = datosP, method = "canberra")
+
+NbClust(diss = dis_datosP, distance = NULL, min.nc = 2,
+        max.nc = 5, method = "complete", index = "silhouette")$Best.nc
+
+NbClust(diss = dis_datosP, distance = NULL, min.nc = 2,
+        max.nc = 5, method = "ward.D", index = "silhouette")$Best.nc
+
+
+# Euclidian
+dis_datos2P <- dist(x = datosP, method = "euclidian")
+
+NbClust(diss = dis_datos2P, distance = NULL, min.nc = 2,
+        max.nc = 5, method = "complete", index = "silhouette")$Best.nc
+
+NbClust(diss = dis_datos2P, distance = NULL, min.nc = 2,
+        max.nc = 5, method = "ward.D", index = "silhouette")$Best.nc
+
+
+
+# Camberra, compelte
+clust.jer1P <- hclust(dis_datosP, method = "complete")
+
+datosv1P = datosP
+datosv1P$c3 = cutree(clust.jer1P, k = 3)
+
+pca <- principal(datosP, nfactor = 2, rotate = "none", scores = TRUE)
+pca
+biplot(pca, group = datosv1P$c3, pch = c(0, 5)[datosv1P$c3])
+
+
+# Camberra, ward.D
+clust.jer2P <- hclust(dis_datosP, method="ward.D")
+
+datosv2P = datos
+datosv2P$c2 = cutree(clust.jer2P, k = 2)
+
+pca <- principal(datosP, nfactor = 2, rotate = "none",scores=TRUE)
+pca
+biplot(pca, group = datosv2P$c2, pch = c(0, 5)[datosv2P$c2])
+
+
+# Euclidian, complete # este
+clust.jer3P <- hclust(dis_datos2P, method="complete")
+
+datosv3P = datos
+datosv3P$c2 = cutree(clust.jer3P, k = 2)
+
+pca <- principal(datosP, nfactor = 2, rotate = "none",scores=TRUE)
+pca
+biplot(pca, group = datosv3P$c2, pch = c(0, 5)[datosv3P$c2])
+
+describeBy(datosv3P ~ c2, mat = TRUE)
+
+
+# Euclidian, ward.D
+clust.jer4P <- hclust(dis_datos2P, method="ward.D")
+
+datosv4P = datos
+datosv4P$c2 = cutree(clust.jer4P, k = 2)
+
+pca <- principal(datosP, nfactor = 2, rotate = "none",scores=TRUE)
+pca
+biplot(pca, group = datosv4P$c2, pch = c(0, 5)[datosv4P$c2])
+
+
+
+#### iii. Modificaciones con componentes principales ####
+
+## Datos originales ##
+R.CP <- prcomp(datos, scale = FALSE)
+
+fviz_pca_var(R.CP, col.var = "contrib")
+
+pcam <- principal(cov(datos), cor="cov", covar = TRUE, nfactor = 2, rotate = "none",scores=TRUE)
+pcam
+
+# PC1: correlación positiva con todos los componentes (>0.70)
+# PC2: correlación negativa con e16, e22
+
+datosCP <- R.CP$x[, c(1, 2)]
+
+dis_datosCP1 <- dist(x = datosCP, method = "euclidian")
+clust.jerCP1 <- hclust(dis_datosCP1, method="complete")
+
+datosv1CP = as.data.frame(datosCP)
+datosv1CP$c2 = cutree(clust.jerCP1, k = 2)
+
+pca <- principal(datosCP, nfactor = 2, rotate = "none", scores=TRUE)
+pca
+biplot(pca, group = datosv1CP$c2, pch = c(0, 5)[datosv1CP$c2])
+
+describeBy(datosv1CP$c2 ~ c2, mat = TRUE)
+
+
+```
+
+## Resultados
+
+Priorizando la interpretabilidad de los resultados se eligio el método de conglomerados jerárquicos aglomerativo aplicado a los componentes principales de los datos estandarizados.
+
+Como se observa en la Figura \@ref(fig:CP), el primer componente principal esta correlacionado positivamente con todas las caracteristicas del servicio, mientras que el componente principal 2 esta negativamente correlacionado con los servicios e1 y e2, y positivamente correlacionado con los servicios e16 y e22. Por lo que un alto valor del componente principal 1 representa que todos los servicios son cruciales y un alto valor del compoente principal 2 considera que llegar a tiempo y que el vuelo ocurra como estaba planeado no son aspectos cruciales mientras que la comida, bebidas y entreteniento son aspectos cruciales.
+
+```{r Calculos2, include=FALSE}
+
+
+## Datos estandarizados ##
+
+R.CPP <- prcomp(datosP, scale = FALSE)
+
+pcam <- principal(cov(datosP), cor="cov", covar = TRUE, nfactor = 2, rotate = "none",scores=TRUE)
+
+```
+
+```{r CP, fig.cap = "Componentes principales de los datos estandarizados", fig.show = "hold", out.width="80%",out.hight="80%",fig.align='center'}
+
+
+fviz_pca_var(R.CPP, col.var = "contrib")
+
+# PC1: correlación positiva con todos los componentes (>0.60)
+# PC2: correlacion negativa con e1, e2, correlacion positiva con e16, e22
+#       e1 (arrive on time), e2 (journey occur as booked)
+#       e16 (food and beverages), e22 (entertainment, service, information resources)
+
+
+```
+
+A los componentes principales de los datos se les aplicó el método de conglomerados jerárquicos aglomerativo usando la disimilaridad de Euclidian entre observaciones y la disimilaridad complete entre clusters para luego diferenciar solo entre dos grupos.
+
+En la Figura \@ref(fig:clusters) se pueden observar los dos grupos considerados.
+
+```{r clusters, fig.cap = "Proyección de los datos sobre los componentes principales", fig.show = "hold", out.width="100%",fig.align='center'}
+
+datosCPP <- R.CPP$x[, c(1, 2)]
+
+dis_datosCP2 <- dist(x = datosCPP, method = "euclidian")
+clust.jerCP2 <- hclust(dis_datosCP2, method="complete")
+
+datosv2CP = as.data.frame(datosCPP)
+datosv2CP$c2 = cutree(clust.jerCP2, k = 2)
+
+pca <- principal(datosCPP, nfactor = 2, rotate = "none", scores=TRUE)
+biplot(pca, group = datosv2CP$c2, pch = c(0, 5)[datosv2CP$c2])
+
+```
+
+Mientras que en la siguiente tabla se pueden observar los valores de los componentes principales para cada grupo.
+
+```{r grupos}
+
+describeBy(datosv2CP$c2 ~ c2, mat = TRUE)
+
+```
+
+Como se puede observar el grupo 1 tiene mayores valores que el grupo 2 en el componente principal 1.
+En cuanto al componente principal 2, el grupo 1 tiene valores negativos pero cercanos a 0 mientras que el grupo 2 tiene valores postivos.
+
+Así que el grupo 1 son personas que tienen una consideración mayor al promedio de que todos los aspectos son cruciales en el servicio de la aerolínea. El grupo 2 son personas que, con respecto al promedio, no consideran cruciales los servicios generales, pero sí aquellos aspectos que estan fuera del negocio principal de la aerolínea, como la comida, bebidas y el entretenimiento que ofrece.
+
