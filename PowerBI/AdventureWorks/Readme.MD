@@ -1,0 +1,1 @@
+Creación de Dashboard interactivo para una empresa de retail especializada en bicicletas, se ofrece un reporte ejecutivos y subreportes que muestran a detalle el número de órdenes, retornos, ingresos y ganancias; entre otros elementos útiles para tomar decisiones de negocio.
